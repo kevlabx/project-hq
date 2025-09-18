@@ -1,54 +1,66 @@
-/* Matrix-mode assignment cockpit: local-only progress + story/game UX. */
+// app.js
+/* Matrix-mode assignment cockpit: local-only progress + beginner-friendly UX */
 
 const el  = (s, r=document)=>r.querySelector(s);
 const els = (s, r=document)=>[...r.querySelectorAll(s)];
-const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
-const fmtPct = n => `${Math.round(n)}%`;
 
-const STORAGE_KEY="LP_HQ_STATE_V3"; // bumped schema
-const OVERLAY_VERSION=3;
+const STORAGE_KEY="LP_HQ_STATE_V4";
+const OVERLAY_VERSION=4;
 
 const DAYS = ["D1","D2","D3","D4","D5","D6","D7","D8","D9","D10"];
 
-/* fetch helpers */
-async function j(url){ const r=await fetch(url,{cache:"no-cache"}); if(!r.ok) throw new Error(`Fetch ${r.status} ${url}`); return r.json(); }
-async function t(url){ const r=await fetch(url,{cache:"no-cache"}); if(!r.ok) throw new Error(`Fetch ${r.status} ${url}`); return r.text(); }
-
-/* state */
-const state = {
-  base:null,
-  view:"dashboard",
-  day:"D1",
-  edit:false,
-  jack:false, // (Lock In) UI label; action key left as 'jack'
-  overlay:null
+const DEFAULT_PROMPTS = {
+  D1:{
+    start:`Context: Build a minimal Next.js App Router app with TypeScript, Tailwind, shadcn/ui, Zustand, Zod, and Kit. Strict TS. Folders app, components, lib, public. Add TokensProvider and Preview. Push to GitHub and deploy to Vercel. Windows with Node LTS, pnpm, Git.
+Task: Give exact Windows PowerShell commands, installs, minimal files with code, and a short test plan.`,
+    end:`List what we finished today.
+Top three risks for tomorrow.
+Short next steps. Under 200 words.`
+  },
+  D2:{
+    start:`Context: TokensProvider and Preview exist.
+Goal: Create a TokensPanel to edit brandColor, accentColor, fontPair, fontScale, spacingScale, radius. Map to CSS variables and Tailwind. Make four presets: Clean, Friendly, Bold, Minimal.
+Show code for mapping and live preview.`,
+    end:`Summarize token work, note styling bugs, propose two refactors for tomorrow.`
+  },
+  D3:{
+    start:`Context: Tokens and live preview work.
+Goal: Build six section types Hero, Features, Pricing, FAQ, Testimonials, CTA with three or four variants each. Accessible, responsive. Provide SectionRegistry and typed props.`,
+    end:`List sections and variants shipped. Note missing alt text or tab traps. Action list for Day 4.`
+  },
+  D4:{
+    start:`Context: Sections and registry ready.
+Goal: Build Editor panel with Zod validation, inline error UI, drag-and-drop reorder with edit, duplicate, delete, undo/redo. Autosave to IndexedDB every 10 seconds.`,
+    end:`Describe UX rough spots, one sub-hour improvement, confirm autosave and recovery with a quick test script.`
+  },
+  D5:{
+    start:`Context: Editor ready.
+Goal: Brief form industry, audience, tone, goal. Implement generator/brief + renderer putting PageSchema with section order, variants, and draft copy (no AI). Seed 8 industries: Cafe, Barber, Interior Design, Fitness, Tutor, Photographer, Bakery, Agency.`,
+    end:`Summarize rules in a small table, note weak layouts, suggest tweaks.`
+  },
+  D6:{start:`Context: Generator shipping. Goal: Export ZIP build with minimal Next project skeleton + tokens + content.` , end:`Export tested? Any missing files?`},
+  D7:{start:`Context: Optional AI polish. Goal: add copy polish hooks A11y/SEO/Perf.` , end:`Which copy blocks improved?`},
+  D8:{start:`Context: Hardening. Goal: A11y/SEO/Perf sweeps + Lighthouse.` , end:`Report scores + remaining gaps.`},
+  D9:{start:`Context: Marketing. Goal: publish demo + readme + screenshots.` , end:`Share links + checklist for launch.`},
+  D10:{start:`Context: Exit. Goal: Final retro + next steps.` , end:`Write a short retro (WWW, WNI, Next).`}
 };
 
-/* overlay schema */
 function emptyOverlay(){
-  const dayNotes = Object.fromEntries(DAYS.map(d=>[d, {start:"", end:"", intention:"", complete:false}]));
   return {
-    version:OVERLAY_VERSION,
-    codename:"",
+    version: OVERLAY_VERSION,
+    view: "dashboard",
+    day: "D1",
+    edit: false,
+    locked: false,
+    overlayNotes: "",
+    hasSeenWelcome: false,
+    readinessPct: 0,
+    lastSaved: null,
     settings:{
-      // high-contrast ON by default; rain OFF by default
-      motion:true,
-      highContrast:true,
-      sound:false,
-      rainMode:"off" // 'off' | 'edge' | 'nav'
+      contrast: true,
+      theme: "dark" // "dark" | "light"
     },
-    dayTicks:{},
-    dayNotes,
-    bugs:[],
-    parkingLocal:[],
-    decisionsLocal:[],
-    ssotPatch:"",
-    focusXP:0,
-    activity:[],
-    milestones:{},
-    endgame:{ repoUrl:"", demoUrl:"", retro:"", submitted:false, complete:false },
-    lastSaved:null,
-    lastActiveDay:"D1"
+    prompts: DEFAULT_PROMPTS
   };
 }
 
@@ -58,824 +70,454 @@ function loadOverlay(){
     if(!raw) return emptyOverlay();
     const o = JSON.parse(raw);
     if(o.version!==OVERLAY_VERSION) return emptyOverlay();
-    return {...emptyOverlay(), ...o};
-  }catch{ return emptyOverlay(); }
+    return {...emptyOverlay(), ...o, prompts: o.prompts || DEFAULT_PROMPTS};
+  }catch{
+    return emptyOverlay();
+  }
 }
+
 function saveOverlay(){
   state.overlay.lastSaved = new Date().toISOString();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.overlay));
-  const lbl = el('#last-saved');
-  if (lbl) lbl.textContent = `Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}`;
-}
-function act(type, detail){
-  state.overlay.activity.push({time:Date.now(), type, detail});
-  if(state.overlay.activity.length>400) state.overlay.activity.shift();
-  saveOverlay();
-  maybeMilestones();
+  updateLastSaved();
 }
 
-/* sanitizers */
-function esc(s=""){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
-function sanitizeHtml(html=""){
-  let out=String(html).replace(/<\s*(script|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,"");
-  out=out.replace(/\son\w+="[^"]*"/gi,"").replace(/\son\w+='[^']*'/gi,"");
-  const ok=/^(a|strong|em|ul|ol|li|br|p|b|i|code|pre|h3|h4)$/i;
-  return out.replace(/<\/?([a-z0-9-]+)([^>]*)>/gi,(m,tag,attrs)=> ok.test(tag)?`<${tag}${attrs}>`:esc(m));
-}
+const state = {
+  overlay: loadOverlay()
+};
 
-/* base load */
-async function loadBase(){
-  const [prompts,sprints,roadmap,tasks,bugsSeed,parkingSeed,decisionsSeed,dayChecks]=await Promise.all([
-    j("data/prompts.json"), j("data/sprints.json"), j("data/roadmap.json"), j("data/tasks.json"),
-    j("data/bugs.json"), j("data/parking.json"), j("data/decisions.json"), j("data/day_checklists.json")
-  ]);
-  const ssot = await t("data/ssot.html");
-  state.base = {prompts,sprints,roadmap,tasks,bugsSeed,parkingSeed,decisionsSeed,dayChecks,ssot};
-}
+/* ---------- Render ---------- */
 
-/* progress */
-function itemsForDay(day){ return (state.base.dayChecks.find(x=>x.day===day)?.items)||[]; }
-function ticksForDay(day){ return state.overlay.dayTicks[day] || (state.overlay.dayTicks[day]={}); }
-function dayTickedCount(day){ const items=itemsForDay(day); const ticks=ticksForDay(day); return items.reduce((n,i)=>n+(ticks[i.id]?1:0),0); }
-function dayPct(day){ const items=itemsForDay(day); if(!items.length) return 0; return (dayTickedCount(day)/items.length)*100; }
+function render(){
+  // theme + contrast
+  document.documentElement.dataset.theme = state.overlay.settings.theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.contrast = state.overlay.settings.contrast ? "high" : "normal";
+  document.body.classList.toggle('jackin', !!state.overlay.locked);
 
-function overallPctRaw(){
-  if(!state.base) return 0;
-  const days = state.base.sprints.map(s=>s.day);
-  const sum = days.reduce((a,d)=>a+dayPct(d),0);
-  return sum/days.length;
-}
-function overallPct(){
-  const base = overallPctRaw();
-  if(state.overlay.endgame.complete) return base;
-  return Math.min(base, 99);
-}
-function streaks(){
-  const done = DAYS.map(d=> !!state.overlay.dayNotes[d]?.complete);
-  let best=0,cur=0;
-  for(const v of done){ cur=v?(cur+1):0; best=Math.max(best,cur); }
-  return { current:cur, best };
-}
+  // header active
+  els('.nav .pill').forEach(b=>{
+    b.classList.toggle('active', b.dataset.nav === state.overlay.view);
+  });
+  el('#btn-edit')?.classList.toggle('active', !!state.overlay.edit);
+  el('#btn-edit')?.setAttribute('aria-pressed', String(!!state.overlay.edit));
+  el('#btn-edit')?.replaceChildren(document.createTextNode(`Edit: ${state.overlay.edit?'On':'Off'}`));
 
-/* ring element */
-function ringHtml(p, big=false, shimmer=false){
-  const cls = `ring${big?' big':''}${shimmer?' shimmer':''}`;
-  return `<div class="${cls}" style="--p:${p}"><div class="readout">${fmtPct(p)}</div></div>`;
-}
+  el('#btn-jack')?.replaceChildren(document.createTextNode(state.overlay.locked ? 'Unlock' : 'Lock In'));
 
-/* toasts/milestones */
-function toast(msg, kind="ok"){
-  const root = el('#toasts'); if(!root) return;
-  const d = document.createElement('div');
-  d.className = `toast ${kind}`; d.textContent = msg;
-  root.appendChild(d);
-  setTimeout(()=>{ d.style.opacity="0"; setTimeout(()=>d.remove(), 300); }, 2400);
-}
-function maybeMilestones(){
-  const p = Math.round(overallPctRaw());
-  const marks = [10,25,50,75,90,99,100];
-  for(const m of marks){
-    if(p>=m && !state.overlay.milestones[m]){
-      state.overlay.milestones[m]=true;
-      if(m===50) toast("Operator: 50% — we’re inside the mainframe.", "ok");
-      else if(m===99) toast("Operator: 99% — execute the EXIT CODE ritual.", "warn");
-      else if(m===100) toast("Operator: 100% — signal clean. Extraction complete.", "ok");
-      else toast(`Milestone reached: ${m}%`, "ok");
-      saveOverlay();
-    }
+  // settings checkboxes reflect state
+  const sc = el('#set-contrast'); if(sc){ sc.checked = !!state.overlay.settings.contrast; }
+  const st = el('#set-theme'); if(st){ st.checked = state.overlay.settings.theme==="light"; }
+
+  // main view
+  const app = el('#app');
+  if(!app) return;
+
+  let html = "";
+  const v = state.overlay.view;
+  if(v === "dashboard"){
+    html += (needsWelcome()? welcomeView() : "");
+    html += missionHero();
+    html += newPanelWhatYouBuild();
+    html += newPanelHowItWorks();
+    html += dayRail();
   }
-}
-
-/* code rain (mode-aware) */
-let rainRAF=0, rainCtx=null, rainCols=[], rainFont=16, rainCanvas=null;
-
-function applyRainMode(){
-  const cv = rainCanvas || el('#code-rain'); if(!cv) return;
-  cv.classList.remove('rain-off','rain-nav');
-  const mode = state.overlay.settings.rainMode;
-  if(mode==='off'){ cv.classList.add('rain-off'); }
-  if(mode==='nav'){ cv.classList.add('rain-nav'); }
-  // edge mode uses default canvas class (full-screen with mask defined in CSS)
-  resizeRain();
-}
-
-function resizeRain(){
-  const cv = rainCanvas || el('#code-rain'); if(!cv) return;
-  if(cv.classList.contains('rain-nav')){
-    cv.width = innerWidth; cv.height = 64;
-  }else{
-    cv.width = innerWidth; cv.height = innerHeight;
+  else if(v === "days"){
+    html += daysView();
   }
-  const cols = Math.ceil(cv.width/rainFont);
-  rainCols = Array(cols).fill(0);
+  else if(v === "prompts"){
+    html += commonPromptsPanel();
+    html += allPromptsPanel();
+  }
+  else if(v === "cheatsheet"){
+    html += cheatSheetView();
+  }
+  else if(v === "commands"){
+    html += commandsView();
+  }
+  else{
+    html += placeholderView(v);
+  }
+
+  app.innerHTML = html;
+  wireDynamic();
+  updateLastSaved();
 }
 
-function initRain(){
-  const cv = el('#code-rain'); rainCanvas = cv; if(!cv) return;
-  rainCtx = cv.getContext('2d');
+/* ---------- Views ---------- */
 
-  applyRainMode();
-  addEventListener('resize', resizeRain);
+function needsWelcome(){ return !state.overlay.hasSeenWelcome; }
 
-  const glyphs = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-  const step=()=>{
-    const mode = state.overlay.settings.rainMode;
-    if(mode==='off' || state.jack){ // pause when Lock In
-      if(rainCtx){ rainCtx.clearRect(0,0,cv.width,cv.height); }
-      rainRAF=requestAnimationFrame(step);
-      return;
-    }
-    rainCtx.fillStyle="rgba(0,0,0,0.06)";
-    rainCtx.clearRect(0,0,cv.width,cv.height);
-    rainCtx.fillRect(0,0,cv.width,cv.height);
-
-    // much softer to stay out of the way
-    rainCtx.fillStyle="#00ff85";
-    rainCtx.globalAlpha = mode==='nav' ? 0.14 : 0.08;
-
-    for(let i=0;i<rainCols.length;i++){
-      const txt = glyphs[Math.floor(Math.random()*glyphs.length)];
-      const x=i*rainFont; const y = rainCols[i]*rainFont;
-      rainCtx.fillText(txt,x,y);
-      if(y>cv.height && Math.random()>0.975){ rainCols[i]=0; } else { rainCols[i]++; }
-    }
-    rainCtx.globalAlpha = 1;
-    rainRAF=requestAnimationFrame(step);
-  };
-  rainRAF=requestAnimationFrame(step);
-}
-
-/* sounds (kept off by default; safe to ignore if you remove the toggle) */
-let audioCtx=null;
-function beep(){
-  if(!state.overlay.settings.sound) return;
-  try{
-    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
-    const o = audioCtx.createOscillator(); const g=audioCtx.createGain();
-    o.type="triangle"; o.frequency.value=660; g.gain.value=0.02;
-    o.connect(g); g.connect(audioCtx.destination); o.start();
-    setTimeout(()=>{o.stop()},120);
-  }catch{}
-}
-
-/* modal */
-function openModal(html){
-  const root = el('#modal-root');
-  const backdrop = document.createElement('div'); backdrop.className="modal-backdrop";
-  const box = document.createElement('div'); box.className="modal"; box.innerHTML = html;
-  root.appendChild(backdrop); root.appendChild(box);
-  const close = ()=>{ backdrop.remove(); box.remove(); };
-  backdrop.addEventListener('click', close);
-  box.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', close));
-  return { close, el:box };
-}
-
-/* views */
-function missionHero(){
-  const p = Math.round(overallPct());
-  const shimmer = p>=90;
-  const {current, best} = streaks();
+function welcomeView(){
   return `
-  <section class="panel" style="position:relative;overflow:hidden">
-    <div style="display:flex;gap:22px;align-items:center;justify-content:center;flex-wrap:wrap">
-      ${ringHtml(p,true,shimmer)}
+  <section class="panel">
+    <div class="h2">Welcome, Operator.</div>
+    <p class="small muted">Build a landing page in 10 days. No accounts. Your progress stays <em>only</em> in your browser.</p>
+    <ol class="small">
+      <li>Open <strong>Days</strong> and copy the Start prompt.</li>
+      <li>Work in your repo, deploy, then tick your checklist.</li>
+      <li>End the day with a short retro in the Exit panel.</li>
+    </ol>
+    <div class="toolbar">
+      <button class="btn primary" data-action="start-mission">Red Pill — Start Day 1</button>
+      <button class="btn" data-action="see-plan">Blue Pill — See the Plan</button>
+    </div>
+  </section>`;
+}
+
+function missionHero(){
+  const pct = clamp(state.overlay.readinessPct||0,0,100);
+  return `
+  <section class="panel">
+    <div class="grid cols-3">
+      <div class="card center">
+        <div class="ring" style="--pct:${pct}%"><span>${Math.round(pct)}%</span></div>
+      </div>
       <div>
         <div class="h2">“Follow the white rabbit.”</div>
-        <div class="small muted">Follow the daily prompts. Tick checklists. Ship. Nothing leaves your browser.</div>
-        <div class="toolbar" style="margin-top:8px">
-          <button class="btn" data-action="red-pill">Red Pill — Start Day 1</button>
-          <button class="btn" data-action="blue-pill">Blue Pill — See the Plan</button>
-        </div>
-        <div class="small muted" style="margin-top:8px">
-          Streak: ${current} • Best: ${best} • Focus XP: ${state.overlay.focusXP}
-        </div>
-        <div class="heatmap" style="margin-top:8px">
-          ${DAYS.map(d=>{
-            const pct = Math.round(dayPct(d));
-            const lvl = pct>=75? 'lvl4' : pct>=50? 'lvl3' : pct>=25? 'lvl2' : pct>0? 'lvl1':''; 
-            return `<div class="cell ${lvl}" title="${d}: ${pct}%"></div>`;
-          }).join('')}
+        <p class="small muted">Follow the daily prompts. Tick checklists. Ship. Nothing leaves your browser.</p>
+        <div class="toolbar">
+          <button class="btn" data-action="start-mission">Red Pill — Start Day 1</button>
+          <button class="btn" data-action="see-plan">Blue Pill — See the Plan</button>
         </div>
       </div>
-    </div>
-  </section>
-  `;
-}
-function missionExplainer(){
-  return `
-  <section class="grid cols-3">
-    <div class="panel kpi">
-      <div>${ringHtml(overallPctRaw())}</div>
       <div>
-        <div class="h2">Readiness Meter</div>
-        <div class="small muted">Fills from your daily checklists. Caps at 99% until the EXIT CODE ritual.</div>
+        <div class="h2">Streak</div>
+        <div class="small muted">Keep a daily streak for focus XP. Export JSON any time.</div>
       </div>
     </div>
-    <div class="panel">
-      <div class="h2">What you’ll build</div>
-      <div class="small">Sections (Hero/Features/Pricing/FAQ/Testimonials/CTA) + variants, rule-based generator (8 industries), export to ZIP, optional AI polish, quality bars (A11y/SEO/Perf).</div>
-    </div>
-    <div class="panel">
-      <div class="h2">How this works</div>
-      <ol class="small">
-        <li>Open a day → copy the prompt (“Load program”)</li>
-        <li>Build in <em>your</em> repo + deploy</li>
-        <li>Tick checklist, write end notes, Export JSON</li>
-      </ol>
-    </div>
-  </section>
-  `;
+  </section>`;
 }
-function missionDaysRail(){
+
+function newPanelWhatYouBuild(){
   return `
   <section class="panel">
+    <div class="h2">What you'll build</div>
+    <p class="small">Sections (Hero/Features/Pricing/FAQ/Testimonials/CTA) + variants, rule-based generator, export to ZIP, optional AI polish, quality bars (A11y/SEO/Perf).</p>
+  </section>`;
+}
+
+function newPanelHowItWorks(){
+  return `
+  <section class="panel">
+    <div class="h2">How this works</div>
+    <ol class="small">
+      <li>Open a day → copy the prompt (“Load program”).</li>
+      <li>Build in your repo + deploy.</li>
+      <li>Tick checklist, write end notes, Export JSON.</li>
+    </ol>
+  </section>`;
+}
+
+function dayRail(){
+  const items = DAYS.map(d=>{
+    return `<div class="day-card">
+      <div><strong>${d}</strong><span class="badge muted small" style="margin-left:8px">0%</span></div>
+      <div class="right"><button class="btn" data-action="open-day" data-day="${d}">Open</button></div>
+    </div>`;
+  }).join("");
+  return `<section class="panel">
     <div class="h2">10-day mission rail</div>
-    <div class="grid cols-3">
-      ${state.base.sprints.map(s=>{
-        const pct = Math.round(dayPct(s.day));
-        const glyph = state.overlay.dayNotes[s.day]?.complete ? "✓" : "";
-        return `
-        <div class="card">
-          <h4>${s.day} ${glyph}</h4>
-          <div class="small muted">${(state.base.prompts.find(p=>p.day===s.day)?.start||"") .split(".")[0]}.</div>
-          <div style="margin:8px 0">${ringHtml(pct)}</div>
-          <div class="toolbar">
-            <button class="btn" data-action="goto-day" data-day="${s.day}">Open</button>
-          </div>
-        </div>`;
-      }).join('')}
+    <div class="list">${items}</div>
+  </section>`;
+}
+
+function daysView(){
+  const d = state.overlay.day;
+  const prom = state.overlay.prompts[d] || {start:"", end:""};
+  return `
+  <section class="panel">
+    <div class="h2">${d}</div>
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="h2">Start</div>
+        <div class="code" id="code-start">${escapeHtml(prom.start)}</div>
+        <div class="toolbar"><button class="btn" data-copy="#code-start">Copy</button></div>
+      </div>
+      <div class="card">
+        <div class="h2">End</div>
+        <div class="code" id="code-end">${escapeHtml(prom.end)}</div>
+        <div class="toolbar"><button class="btn" data-copy="#code-end">Copy</button></div>
+      </div>
     </div>
-  </section>
-  `;
-}
-function operatorLine(day){
-  const map = {
-    D1:"Operator: boot the stack, find a phone line (first deploy).",
-    D2:"Operator: load the armory (tokens & presets).",
-    D3:"Operator: dojo time — build the sections library.",
-    D4:"Operator: bullet-time UX — editor + autosave.",
-    D5:"Operator: craft the rules — generate full pages.",
-    D6:"Operator: extraction — export a buildable ZIP.",
-    D7:"Operator: Oracle assist — optional copy polish.",
-    D8:"Operator: harden the hull — A11y/SEO/Perf.",
-    D9:"Operator: broadcast — landing & docs.",
-    D10:"Operator: exit the Matrix — safety & polish."
-  };
-  return map[day]||"Operator: proceed.";
+    <div class="toolbar">
+      ${DAYS.map(x=>`<button class="pill ${x===d?'active':''}" data-daytab="${x}">${x}</button>`).join("")}
+    </div>
+  </section>`;
 }
 
-/* render */
-function render(){
-  const app = el('#app');
-  if(!state.base){ app.innerHTML='<div class="panel">Loading…</div>'; return; }
+function commonPromptsPanel(){
+  const lines = [
+    "Give a 2-sentence goal for today and a 5-step plan.",
+    "Draft 3 commit messages (prefix with D{day}:). ≤65 chars.",
+    "Write acceptance criteria as Given/When/Then.",
+    "Generate alt-text for all images (10–15 words each).",
+    "Suggest 5 mobile tests that could break the layout.",
+    "List 8 accessibility checks for this screen.",
+    "Propose SEO title + meta description + counts.",
+    "Turn tokens into Tailwind overrides (brandColor, fontScale, radius…).",
+    "Write a 100-word retro: WWW / WNI / Next.",
+    "Create a 3-item ‘tomorrow setup’ checklist."
+  ];
+  return `<section class="panel">
+    <div class="h2">Common Prompts</div>
+    <div class="code">${lines.map(s=>"• "+s).join("\n")}</div>
+  </section>`;
+}
 
-  document.documentElement.dataset.contrast = state.overlay.settings.highContrast ? "high" : "normal";
+function allPromptsPanel(){
+  const blocks = DAYS.map(d=>{
+    const p = state.overlay.prompts[d];
+    return `<div class="card">
+      <div class="h2">${d}</div>
+      <div class="small muted">Start</div>
+      <div class="code" id="p-${d}-s">${escapeHtml(p.start)}</div>
+      <div class="toolbar"><button class="btn" data-copy="#p-${d}-s">Copy</button></div>
+      <div class="space"></div>
+      <div class="small muted">End</div>
+      <div class="code" id="p-${d}-e">${escapeHtml(p.end)}</div>
+      <div class="toolbar"><button class="btn" data-copy="#p-${d}-e">Copy</button></div>
+    </div>`;
+  }).join("");
+  return `<section class="panel"><div class="h2">All prompts (copy to load programs)</div><div class="grid cols-3">${blocks}</div></section>`;
+}
 
-  if(state.view==="dashboard"){
-    app.innerHTML = missionHero()+missionExplainer()+missionDaysRail()+focusPomodoro()+endgamePanel();
-  }
+function cheatSheetView(){
+  return `
+  <section class="panel"><div class="h2">Cheat Sheet</div>
+    <div class="grid cols-3">
+      <div class="card">
+        <div class="h2">VS Code</div>
+        <div class="code">Ctrl + P  Quick open
+Ctrl + Shift + P  Command palette
+Ctrl + /  Toggle comment
+Alt + ↑/↓  Move line
+Ctrl + B  Toggle sidebar</div>
+      </div>
+      <div class="card">
+        <div class="h2">Git basics</div>
+        <div class="code">git status
+git add .
+git commit -m "msg"
+git push
+git switch -c feature/x
+git restore --staged .</div>
+      </div>
+      <div class="card">
+        <div class="h2">Shell tips</div>
+        <div class="code">node -v
+npm -v
+pnpm -v
+pnpm dlx serve .
+pnpm dev</div>
+      </div>
+    </div>
+  </section>`;
+}
 
-  if(state.view==="days"){
-    const day = state.day;
-    state.overlay.lastActiveDay = day; saveOverlay();
-
-    const p = state.base.prompts.find(x=>x.day===day);
-    const items = itemsForDay(day);
-    const ticks = ticksForDay(day);
-    const notes = state.overlay.dayNotes[day] || { start:"", end:"", intention:"", complete:false };
-    const disabled = state.edit ? "" : "disabled";
-    const pct = Math.round(dayPct(day));
-
-    app.innerHTML = `
-      <section class="panel focus-target">
-        <div class="toolbar">
-          ${state.base.sprints.map(s=>`<button class="btn ${s.day===day?'nav-active':''}" data-action="set-day" data-day="${s.day}">${s.day}</button>`).join('')}
-        </div>
-        <div class="h2">${operatorLine(day)}</div>
-        <div class="grid cols-2">
-          <div class="panel">
-            <div class="h2">Start prompt</div>
-            <div class="code">${esc(p?.start||"No prompt")}</div>
-            <div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p?.start||'')}">Load program</button></div>
-          </div>
-          <div class="panel">
-            <div class="h2">End prompt</div>
-            <div class="code">${esc(p?.end||"No prompt")}</div>
-            <div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p?.end||'')}">Load program</button></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel focus-target">
-        <div class="h2">Mission checklist ${ringHtml(pct)}</div>
-        ${items.map((it,idx)=>{
-          const group = idx<3 ? "Equip/Engage/Extract" : "Side Quest";
-          return `
-            <label class="checkbox">
-              <input type="checkbox" data-action="tick" data-day="${day}" data-id="${esc(it.id)}" ${ticks[it.id]?'checked':''} ${disabled} />
-              <div>
-                <strong>${esc(it.title)}</strong>
-                <div class="small muted">${group}${it.desc? " • "+esc(it.desc):""}</div>
-              </div>
-            </label>
-          `;
-        }).join('')}
-        <div class="toolbar">
-          <label class="checkbox">
-            <input type="checkbox" data-action="day-complete" data-day="${day}" ${notes.complete?'checked':''} ${disabled}/>
-            <div><strong>Mark day complete</strong> <span class="small muted">(affects streak)</span></div>
-          </label>
-          <button class="btn" data-action="eod" ${disabled}>End-of-day ritual</button>
-        </div>
-      </section>
-
-      <section class="grid cols-3 focus-target">
-        <div class="panel">
-          <div class="h2">Implementation intention</div>
-          <input class="input" placeholder="If it’s 9:00am, I will ____." data-action="intent" data-day="${day}" value="${esc(notes.intention)}" ${disabled}/>
-        </div>
-        <div class="panel">
-          <div class="h2">Start notes</div>
-          <textarea class="textarea" data-action="note-start" data-day="${day}" ${disabled}>${esc(notes.start)}</textarea>
-        </div>
-        <div class="panel">
-          <div class="h2">End notes</div>
-          <textarea class="textarea" data-action="note-end" data-day="${day}" ${disabled}>${esc(notes.end)}</textarea>
-        </div>
-      </section>
-    `;
-  }
-
-  if(state.view==="tasks"){
-    const groups = { "Not started":[], "In progress":[], "Blocked":[], "Done":[] };
-    state.base.tasks.forEach(t=>groups[t.status]?.push(t));
-    const cols = Object.entries(groups).map(([k,items])=>`
-      <div class="column">
-        <div class="h2">${k} <span class="tag">${items.length}</span></div>
-        ${items.map(t=>{
-          const dPct = Math.round(dayPct(t.day||""));
-          return `
-            <div class="card">
-              <h4>${esc(t.id)} · ${esc(t.title)}</h4>
-              <div class="small muted">${esc(t.day)} · ${esc(t.priority)} · Day progress: ${dPct}%</div>
-              <div class="note small">Guidance only. Track real progress in Days.</div>
-            </div>`;
-        }).join('')}
-      </div>`).join('');
-    el('#app').innerHTML = `<section class="panel"><div class="h2">Kanban (reference)</div><div class="board">${cols}</div></section>`;
-  }
-
-  if(state.view==="bugs"){ el('#app').innerHTML = renderBugs(); }
-  if(state.view==="parking"){ el('#app').innerHTML = renderParking(); }
-  if(state.view==="decisions"){ el('#app').innerHTML = renderDecisions(); }
-
-  if(state.view==="docs"){
-    const html = state.overlay.ssotPatch ? sanitizeHtml(state.overlay.ssotPatch) : state.base.ssot;
-    el('#app').innerHTML = `
-      <section class="panel">
-        <div class="h2">SSOT</div>
-        <div class="code" style="white-space:normal" id="ssot-view">${html}</div>
-        <div class="toolbar">
-          <button class="btn" data-action="ssot-edit" ${state.edit?"":"disabled"}>Edit (local)</button>
-          <button class="btn" data-action="ssot-clear" ${state.edit?"":"disabled"}>Revert to base</button>
-        </div>
-        <div id="ssot-editor" style="display:none">
-          <textarea class="textarea" id="ssot-text">${state.overlay.ssotPatch||state.base.ssot}</textarea>
-          <div class="toolbar">
-            <button class="btn" data-action="ssot-save">Save</button>
-            <button class="btn" data-action="ssot-cancel">Cancel</button>
-          </div>
-        </div>
-      </section>`;
-  }
-
-  if(state.view==="prompts"){
-    el('#app').innerHTML = `
-      <section class="panel">
-        <div class="h2">All prompts (copy to load programs)</div>
-        ${renderPromptList(true)}
-      </section>`;
-  }
-
-  if(state.view==="cheats"){
-    el('#app').innerHTML = `
-      <section class="panel">
-        <div class="h2">Cheat Sheet</div>
-        <div class="grid cols-3">
-          <div class="panel">
-            <h4>VS Code</h4>
-            <div class="small">
-              <div><span class="kbd">Ctrl</span> + <span class="kbd">P</span> Quick open</div>
-              <div><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span> Command palette</div>
-              <div><span class="kbd">Ctrl</span> + <span class="kbd">/</span> Toggle comment</div>
-              <div><span class="kbd">Alt</span> + <span class="kbd">Up/Down</span> Move line</div>
-              <div><span class="kbd">Ctrl</span> + <span class="kbd">B</span> Toggle sidebar</div>
-            </div>
-          </div>
-          <div class="panel">
-            <h4>Git basics</h4>
-            <div class="code">git status\ngit add .\ngit commit -m "msg"\ngit push</div>
-            <div class="small muted" style="margin-top:6px">Keep commits small & meaningful.</div>
-          </div>
-          <div class="panel">
-            <h4>Shell tips</h4>
-            <div class="code">node -v\nnpm -v\npnpm -v\nnpx serve .</div>
-          </div>
-        </div>
-      </section>`;
-  }
-
-  if(state.view==="commands"){
-    const win = `node -v
+function commandsView(){
+  return `
+  <section class="panel"><div class="h2">Commands</div>
+    <div class="grid cols-3">
+      <div class="card">
+        <div class="h2">Windows</div>
+        <div class="code">node -v
 npm -v
 pnpm -v
 git --version
+corepack enable
 pnpm i
 pnpm dev
-npx serve .`;
-    const mac = `node -v
+pnpm dlx serve .</div>
+      </div>
+      <div class="card">
+        <div class="h2">macOS</div>
+        <div class="code">node -v
 npm -v
 pnpm -v
 git --version
+corepack enable
 pnpm install
 pnpm dev
-npx serve .`;
-    const lin = `node -v
+pnpm dlx serve .</div>
+      </div>
+      <div class="card">
+        <div class="h2">Linux</div>
+        <div class="code">node -v
 npm -v
 pnpm -v
 git --version
+corepack enable
 pnpm install
 pnpm dev
-npx serve .`;
-    el('#app').innerHTML = `
-      <section class="panel">
-        <div class="h2">Commands</div>
-        <div class="grid cols-3">
-          <div class="panel"><h4>Windows</h4><div class="code">${esc(win)}</div></div>
-          <div class="panel"><h4>macOS</h4><div class="code">${esc(mac)}</div></div>
-          <div class="panel"><h4>Linux</h4><div class="code">${esc(lin)}</div></div>
-        </div>
-        <div class="footer-note">Use VS Code Live Server or “npx serve” to test locally.</div>
-      </section>`;
-  }
-
-  els('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===state.view));
-  els('.ring').forEach(r=>r.style.setProperty('--p', overallPct()));
-}
-
-/* subviews */
-function renderPromptList(includeDays=false){
-  const list = includeDays ? state.base.prompts : state.base.prompts.slice(0,3);
-  return `
-    <table class="table">
-      <thead><tr><th>Day</th><th>Start</th><th>End</th></tr></thead>
-      <tbody>
-        ${list.map(p=>`
-        <tr>
-          <td>${p.day}</td>
-          <td><div class="code">${esc(p.start)}</div><div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p.start)}">Copy</button></div></td>
-          <td><div class="code">${esc(p.end)}</div><div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p.end)}">Copy</button></div></td>
-        </tr>`).join('')}
-      </tbody>
-    </table>`;
-}
-
-function renderBugs(){
-  const d = state.overlay.bugs;
-  const disabled = state.edit?"":"disabled";
-  return `
-  <section class="panel">
-    <div class="h2">Bugs</div>
-    <div class="toolbar">
-      <input class="input" placeholder="Bug title" id="bug-title" ${disabled}/>
-      <select class="input" id="bug-sev" ${disabled}><option>Sev2</option><option>Sev1</option><option>Sev3</option></select>
-      <button class="btn" data-action="bug-add" ${disabled}>Add</button>
+pnpm dlx serve .</div>
+      </div>
     </div>
-    <table class="table">
-      <thead><tr><th>Bug</th><th>Status</th><th>Severity</th><th>Actions</th></tr></thead>
-      <tbody>
-        ${d.map((b,i)=>`
-          <tr>
-            <td><strong>#${i+1}</strong> ${esc(b.title)}</td>
-            <td>${esc(b.status||"New")}</td>
-            <td>${esc(b.severity||"Sev2")}</td>
-            <td>
-              <button class="btn" data-action="bug-status" data-idx="${i}" data-val="New" ${disabled}>New</button>
-              <button class="btn" data-action="bug-status" data-idx="${i}" data-val="In progress" ${disabled}>In progress</button>
-              <button class="btn" data-action="bug-status" data-idx="${i}" data-val="Done" ${disabled}>Done</button>
-              <button class="btn" data-action="bug-del" data-idx="${i}" ${disabled}>Delete</button>
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-  </section>`;
-}
-function renderParking(){
-  const base = state.base.parkingSeed;
-  const local = state.overlay.parkingLocal;
-  const disabled = state.edit?"":"disabled";
-  return `
-  <section class="panel">
-    <div class="h2">Parking</div>
-    <div class="toolbar">
-      <input class="input" placeholder="Idea" id="pk-name" ${disabled}/>
-      <input class="input" placeholder="Area (Builder/Sections/Export/...)" id="pk-area" ${disabled}/>
-      <button class="btn" data-action="pk-add" ${disabled}>Add</button>
-    </div>
-    <table class="table">
-      <thead><tr><th>Idea</th><th>Area</th><th></th></tr></thead>
-      <tbody>
-        ${base.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.area)}</td><td></td></tr>`).join('')}
-        ${local.map((p,i)=>`<tr><td>${esc(p.name)} <span class="tag">local</span></td><td>${esc(p.area)}</td><td><button class="btn" data-action="pk-del" data-idx="${i}" ${disabled}>Delete</button></td></tr>`).join('')}
-      </tbody>
-    </table>
-  </section>`;
-}
-function renderDecisions(){
-  const base = state.base.decisionsSeed;
-  const local = state.overlay.decisionsLocal;
-  const disabled = state.edit?"":"disabled";
-  return `
-  <section class="panel">
-    <div class="h2">Decisions</div>
-    <div class="toolbar">
-      <input class="input" placeholder="ID (e.g., D-003)" id="dc-id" ${disabled}/>
-      <input class="input" placeholder="Date (YYYY-MM-DD)" id="dc-date" ${disabled}/>
-      <input class="input" placeholder="Decision" id="dc-decision" ${disabled}/>
-      <input class="input" placeholder="Impact" id="dc-impact" ${disabled}/>
-      <button class="btn" data-action="dc-add" ${disabled}>Add</button>
-    </div>
-    <table class="table">
-      <thead><tr><th>ID</th><th>Decision</th><th>Date</th><th>Impact</th><th></th></tr></thead>
-      <tbody>
-        ${base.map(d=>`<tr><td>${esc(d.id)}</td><td>${esc(d.decision)}</td><td>${esc(d.date)}</td><td>${esc(d.impact)}</td><td></td></tr>`).join('')}
-        ${local.map((d,i)=>`<tr><td>${esc(d.id)} <span class="tag">local</span></td><td>${esc(d.decision)}</td><td>${esc(d.date)}</td><td>${esc(d.impact)}</td><td><button class="btn" data-action="dc-del" data-idx="${i}" ${disabled}>Delete</button></td></tr>`).join('')}
-      </tbody>
-    </table>
   </section>`;
 }
 
-/* header wiring */
+function placeholderView(name){
+  const title = name.charAt(0).toUpperCase()+name.slice(1);
+  return `<section class="panel"><div class="h2">${title}</div><p class="small muted">This area is being scaffolded. For now, use <strong>Days</strong>, <strong>Prompts</strong>, <strong>Cheat Sheet</strong>, and <strong>Commands</strong>.</p></section>`;
+}
+
+/* ---------- Wire UI ---------- */
+
 function wireHeader(){
-  el('#btn-edit')?.addEventListener('click', ()=>{ state.edit=!state.edit; el('#btn-edit').textContent=`Edit: ${state.edit?'On':'Off'}`; toast(`Edit ${state.edit?'On':'Off'}`); render(); });
-  el('#btn-export')?.addEventListener('click', exportOverlay);
-  el('#btn-import')?.addEventListener('click', ()=>el('#file-import').click());
-  el('#file-import')?.addEventListener('change', e=>{ const f=e.target.files?.[0]; if(f){ importOverlayFromFile(f); } e.target.value=""; });
-  el('#btn-reset')?.addEventListener('click', resetOverlay);
+  // nav
+  els('.nav [data-nav]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      state.overlay.view = b.dataset.nav;
+      saveOverlay(); render();
+    });
+  });
 
-  el('#btn-settings')?.addEventListener('click', ()=>{ el('.menu.settings').classList.toggle('open'); });
-  document.addEventListener('click', e=>{ if(!e.target.closest('.menu')) el('.menu.settings')?.classList.remove('open'); });
+  // quick actions
+  el('#btn-edit')?.addEventListener('click', ()=>{
+    state.overlay.edit = !state.overlay.edit;
+    toast(state.overlay.edit? "Edit enabled" : "Edit disabled");
+    saveOverlay(); render();
+  });
 
-  const S=state.overlay.settings;
-  // Handlers are optional-safe (UI may or may not have these)
-  el('#set-motion')?.addEventListener('change', e=>{ S.motion = !e.target.checked; saveOverlay(); });
-  el('#set-contrast')?.addEventListener('change', e=>{ S.highContrast = e.target.checked; saveOverlay(); render(); });
-  el('#set-sound')?.addEventListener('change', e=>{ S.sound = e.target.checked; saveOverlay(); });
-  el('#set-rain-mode')?.addEventListener('change', e=>{ S.rainMode = e.target.value; saveOverlay(); applyRainMode(); });
-
-  // initialize panel inputs if present
-  const init = ()=>{
-    const S=state.overlay.settings;
-    const rm = el('#set-rain-mode'); if(rm) rm.value = S.rainMode || "off";
-    const m  = el('#set-motion'); if(m) m.checked = !S.motion;
-    const c  = el('#set-contrast'); if(c) c.checked = !!S.highContrast;
-    const s  = el('#set-sound'); if(s) s.checked = !!S.sound;
-  };
-  setTimeout(init,0);
-
-  // Label shows Lock In even though the action key stays 'jack'
   el('#btn-jack')?.addEventListener('click', ()=>{
-    state.jack=!state.jack;
-    document.body.classList.toggle('jackin', state.jack);
-    render(); // visual dim
+    state.overlay.locked = !state.overlay.locked;
+    toast(state.overlay.locked? "Locked in. Distraction shields up." : "Unlocked.");
+    saveOverlay(); render();
   });
-}
 
-/* app wiring */
-let pomInt=null, pomLeft=25*60;
-function wireApp(){
-  document.addEventListener('click', e=>{
-    const t=e.target;
+  el('#btn-export')?.addEventListener('click', ()=>{
+    const name = `lp-hq-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+    const blob = new Blob([JSON.stringify(state.overlay,null,2)], {type:"application/json"});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+  });
 
-    if(t.matches('.nav button')){ state.view=t.dataset.view; render(); return; }
-    const d=t.closest('[data-action="set-day"]'); if(d){ state.day=d.dataset.day; state.overlay.lastActiveDay=state.day; saveOverlay(); render(); return; }
+  el('#btn-import')?.addEventListener('click', ()=> el('#file-import').click());
+  el('#file-import')?.addEventListener('change', (e)=>{
+    const f = e.target.files?.[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const o = JSON.parse(String(reader.result||"{}"));
+        if(!o || typeof o!=="object") throw new Error("Bad file");
+        state.overlay = {...emptyOverlay(), ...o};
+        toast("Imported progress.");
+        saveOverlay(); render();
+      }catch(err){
+        toast("Import failed: "+err.message);
+      }
+    };
+    reader.readAsText(f);
+  });
 
-    if(t.matches('[data-action="red-pill"]')){ state.view="days"; state.day="D1"; toast("Operator: connecting you to D1."); render(); return; }
-    if(t.matches('[data-action="blue-pill"]')){ window.scrollTo({top:document.body.scrollHeight*0.35, behavior: state.overlay.settings.motion?'smooth':'instant'}); return; }
-    if(t.matches('[data-action="goto-day"]')){ state.view="days"; state.day=t.dataset.day; render(); return; }
-
-    if(t.matches('[data-action="copy"]')){ navigator.clipboard.writeText(t.dataset.text||""); t.textContent="Loaded"; setTimeout(()=>t.textContent="Load program",1200); return; }
-
-    if(t.matches('[data-action="tick"]')){
-      if(!state.edit) return;
-      const day=t.dataset.day,id=t.dataset.id;
-      const v=t.checked;
-      ticksForDay(day)[id]=v;
-      act('tick', `${day}:${id}=${v}`); beep(); render(); return;
-    }
-
-    if(t.matches('[data-action="day-complete"]')){
-      if(!state.edit) return;
-      const day=t.dataset.day; const v=t.checked;
-      state.overlay.dayNotes[day].complete=v;
-      act('day-complete', `${day}=${v}`); render(); return;
-    }
-
-    if(t.matches('[data-action="eod"]')){
-      if(!state.edit) return;
-      const html = `
-      <div class="h2" style="margin-bottom:8px">End-of-day ritual</div>
-      <ol class="small">
-        <li>Commit & push</li><li>Deploy</li><li>Write end notes</li><li>Export progress</li>
-      </ol>
-      <div class="toolbar"><button class="btn" data-close>Done</button></div>`;
-      openModal(html); return;
-    }
-
-    if(t.matches('[data-action="eg-save"]]')){
-      if(!state.edit) return;
-      const eg=state.overlay.endgame;
-      eg.repoUrl = el('#eg-repo')?.value.trim()||"";
-      eg.demoUrl = el('#eg-demo')?.value.trim()||"";
-      eg.retro   = el('#eg-retro')?.value.trim()||"";
-      eg.submitted = !!el('#eg-sub')?.checked;
-      if(eg.repoUrl && eg.demoUrl && eg.submitted){ eg.complete=true; toast("Exit Code accepted. Readiness 100%.","ok"); }
-      saveOverlay(); render(); return;
-    }
-
-    // Bugs
-    if(t.matches('[data-action="bug-add"]')){
-      if(!state.edit) return;
-      const title=el('#bug-title')?.value.trim(); const sev=el('#bug-sev')?.value||"Sev2";
-      if(!title) return alert("Bug title?");
-      state.overlay.bugs.push({title,severity:sev,status:"New"});
-      act('bug-add', title); render(); return;
-    }
-    if(t.matches('[data-action="bug-status"]')){
-      if(!state.edit) return; const i=+t.dataset.idx; const v=t.dataset.val;
-      if(state.overlay.bugs[i]) state.overlay.bugs[i].status=v;
-      act('bug-status', `${i}:${v}`); render(); return;
-    }
-    if(t.matches('[data-action="bug-del"]')){
-      if(!state.edit) return; const i=+t.dataset.idx;
-      state.overlay.bugs.splice(i,1); act('bug-del', `${i}`); render(); return;
-    }
-
-    // Parking
-    if(t.matches('[data-action="pk-add"]')){
-      if(!state.edit) return;
-      const name=el('#pk-name')?.value.trim(); const area=el('#pk-area')?.value.trim();
-      if(!name) return alert("Idea?");
-      state.overlay.parkingLocal.push({name,area}); act('pk-add', name); render(); return;
-    }
-    if(t.matches('[data-action="pk-del"]')){
-      if(!state.edit) return; const i=+t.dataset.idx;
-      state.overlay.parkingLocal.splice(i,1); act('pk-del', `${i}`); render(); return;
-    }
-
-    // Decisions
-    if(t.matches('[data-action="dc-add"]')){
-      if(!state.edit) return;
-      const id=el('#dc-id')?.value.trim(); const date=el('#dc-date')?.value.trim();
-      const decision=el('#dc-decision')?.value.trim(); const impact=el('#dc-impact')?.value.trim();
-      if(!id||!decision) return alert("ID and Decision required");
-      state.overlay.decisionsLocal.push({id,date,decision,impact}); act('dc-add', id); render(); return;
-    }
-    if(t.matches('[data-action="dc-del"]')){
-      if(!state.edit) return; const i=+t.dataset.idx;
-      state.overlay.decisionsLocal.splice(i,1); act('dc-del', `${i}`); render(); return;
-    }
-
-    // SSOT edit
-    if(t.matches('[data-action="ssot-edit"]')){ el('#ssot-editor').style.display='block'; return; }
-    if(t.matches('[data-action="ssot-cancel"]')){ el('#ssot-editor').style.display='none'; return; }
-    if(t.matches('[data-action="ssot-save"]')){
-      if(!state.edit) return;
-      const raw=el('#ssot-text').value; state.overlay.ssotPatch=raw; act('ssot-save', `${raw.length} chars`); render(); return;
-    }
-    if(t.matches('[data-action="ssot-clear"]')){ if(!state.edit) return; state.overlay.ssotPatch=""; act('ssot-clear',''); render(); return; }
-
-    // Focus / Pomodoro
-    if(t.matches('[data-action="jack"]')){ state.jack=!state.jack; document.body.classList.toggle('jackin',state.jack); render(); return; }
-    if(t.matches('[data-action="pomodoro"]')){
-      const v=t.dataset.val;
-      if(v==="start"){ if(pomInt) return; pomInt=setInterval(()=>{ pomLeft--; updatePom(); if(pomLeft<=0){ clearInterval(pomInt); pomInt=null; pomLeft=25*60; state.overlay.focusXP+=1; toast("Pomodoro cycle complete. +1 Focus XP"); saveOverlay(); updatePom(); } },1000); }
-      if(v==="stop"){ clearInterval(pomInt); pomInt=null; }
-      if(v==="reset"){ pomLeft=25*60; updatePom(); }
-      return;
+  el('#btn-reset')?.addEventListener('click', ()=>{
+    if(confirm("Reset all local progress? This cannot be undone.")){
+      state.overlay = emptyOverlay();
+      saveOverlay(); render();
+      toast("All local data cleared.");
     }
   });
 
-  document.addEventListener('input', e=>{
-    const t=e.target;
-    if(t.matches('[data-action="note-start"]')){ if(!state.edit) return; const d=t.dataset.day; state.overlay.dayNotes[d].start=t.value; saveOverlay(); }
-    if(t.matches('[data-action="note-end"]')){ if(!state.edit) return; const d=t.dataset.day; state.overlay.dayNotes[d].end=t.value; saveOverlay(); }
-    if(t.matches('[data-action="intent"]')){ if(!state.edit) return; const d=t.dataset.day; state.overlay.dayNotes[d].intention=t.value; saveOverlay(); }
+  // settings
+  const settingsMenu = el('.settings');
+  el('#btn-settings')?.addEventListener('click', ()=>{
+    settingsMenu?.classList.toggle('open');
+  });
+  document.addEventListener('click', (e)=>{
+    if(!settingsMenu) return;
+    if(settingsMenu.contains(e.target)) return;
+    settingsMenu.classList.remove('open');
+  });
+
+  el('#set-contrast')?.addEventListener('change', (e)=>{
+    state.overlay.settings.contrast = e.target.checked;
+    saveOverlay(); render();
+  });
+  el('#set-theme')?.addEventListener('change', (e)=>{
+    state.overlay.settings.theme = e.target.checked ? "light" : "dark";
+    saveOverlay(); render();
+  });
+
+  // keyboard shortcuts
+  document.addEventListener('keydown', (e)=>{
+    if(e.target && /input|textarea/i.test(e.target.tagName)) return;
+    if(e.key.toLowerCase()==='e'){ el('#btn-edit')?.click(); }
+    if(e.key.toLowerCase()==='l'){ el('#btn-jack')?.click(); }
+    if(/[0-9]/.test(e.key)){
+      const idx = (e.key==='0')? 9 : (parseInt(e.key,10)-1);
+      if(idx>=0 && idx<DAYS.length){
+        state.overlay.day = DAYS[idx];
+        state.overlay.view = "days";
+        saveOverlay(); render();
+      }
+    }
   });
 }
-function updatePom(){
-  const m = Math.floor(pomLeft/60), s=pomLeft%60;
-  const elT=el('#pom-time'); if(elT) elT.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+function wireDynamic(){
+  // welcome buttons
+  els('[data-action="start-mission"]').forEach(b=>b.addEventListener('click', ()=>{
+    state.overlay.hasSeenWelcome = true;
+    state.overlay.view = "days";
+    state.overlay.day = "D1";
+    saveOverlay(); render();
+  }));
+  els('[data-action="see-plan"]').forEach(b=>b.addEventListener('click', ()=>{
+    state.overlay.hasSeenWelcome = true;
+    saveOverlay();
+    window.scrollTo({top: document.body.scrollHeight*0.35, behavior: 'smooth'});
+  }));
+
+  // day rail open
+  els('[data-action="open-day"]').forEach(b=>b.addEventListener('click', ()=>{
+    const d = b.dataset.day;
+    state.overlay.day = d;
+    state.overlay.view = "days";
+    saveOverlay(); render();
+  }));
+
+  // day tabs
+  els('[data-daytab]').forEach(b=>b.addEventListener('click', ()=>{
+    state.overlay.day = b.dataset.daytab;
+    saveOverlay(); render();
+  }));
+
+  // copy buttons
+  els('[data-copy]').forEach(b=>b.addEventListener('click', ()=>{
+    const target = b.getAttribute('data-copy');
+    const node = el(target);
+    if(!node) return;
+    const text = node.textContent||"";
+    navigator.clipboard.writeText(text).then(()=>{
+      toast("Copied to clipboard");
+    }).catch(()=>{
+      toast("Copy failed");
+    });
+  }));
 }
 
-/* export/import/reset */
-function exportOverlay(){
-  const blob=new Blob([JSON.stringify(state.overlay,null,2)],{type:"application/json"});
-  const url=URL.createObjectURL(blob); const a=document.createElement('a');
-  a.href=url; a.download=`project-hq-progress-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+/* ---------- Helpers ---------- */
+
+function updateLastSaved(){
+  const t = state.overlay.lastSaved ? `Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}` : "";
+  const node = el('#last-saved'); if(node) node.textContent = t;
 }
-function importOverlayFromFile(file){
-  const rdr=new FileReader();
-  rdr.onload=()=>{ try{ const obj=JSON.parse(String(rdr.result)); if(obj.version!==OVERLAY_VERSION) throw new Error("version mismatch"); state.overlay={...emptyOverlay(), ...obj}; saveOverlay(); render(); }catch(e){ alert("Import failed: "+e.message); } };
-  rdr.readAsText(file);
+function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
+function escapeHtml(s){
+  return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
 }
-function resetOverlay(){
-  if(!confirm("This clears your local progress. Continue?")) return;
-  state.overlay = emptyOverlay(); saveOverlay(); render();
+function toast(msg){
+  const box = el('#toasts');
+  if(!box) return;
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  box.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(), 250); }, 1500);
 }
 
-/* sparkline */
-function drawSpark(){
-  const c=el('#spark'); if(!c) return; const ctx=c.getContext('2d');
-  const w=c.width, h=c.height; ctx.clearRect(0,0,w,h);
-  const values = DAYS.map(d=> dayPct(d));
-  const max = Math.max(1, ...values);
-  ctx.strokeStyle="#00ff85"; ctx.lineWidth=2; ctx.beginPath();
-  values.forEach((v,i)=>{ const x=(i/(values.length-1))*w; const y=h - (v/max)*h; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
-  ctx.stroke();
-}
-
-/* focus/pomodoro panels */
-function focusPomodoro(){
-  return `
-  <section class="grid cols-3">
-    <div class="panel">
-      <div class="h2">Lock In (Focus)</div>
-      <div class="small muted">Hide distractions. Work the plan.</div>
-      <div class="toolbar"><button class="btn" data-action="jack">${state.jack? "Exit Lock In" : "Enter Lock In"}</button></div>
-    </div>
-    <div class="panel">
-      <div class="h2">Focus Timer</div>
-      <div class="toolbar">
-        <button class="btn" data-action="pomodoro" data-val="start">Start</button>
-        <button class="btn" data-action="pomodoro" data-val="stop">Stop</button>
-        <button class="btn" data-action="pomodoro" data-val="reset">Reset</button>
-      </div>
-      <div class="small muted">Completing a cycle grants Focus XP (cosmetic).</div>
-      <div id="pom-time" class="h2">25:00</div>
-    </div>
-    <div class="panel">
-      <div class="h2">Momentum</div>
-      <canvas id="spark" width="320" height="60" style="width:100%;height:60px"></canvas>
-      <div class="small muted">Progress by day (tap the big ring for hints).</div>
-    </div>
-  </section>`;
-}
-function endgamePanel(){
-  const p = Math.round(overallPctRaw());
-  if(p<99 && !state.overlay.endgame.complete) return "";
-  const eg = state.overlay.endgame;
-  return `
-  <section class="panel">
-    <div class="h2">EXIT CODE</div>
-    <div class="small muted">At 99%, complete this ritual to flip to 100%: share links + export progress.</div>
-    <div class="grid cols-3">
-      <div class="panel">
-        <div class="h2">Repo URL</div>
-        <input class="input" id="eg-repo" value="${esc(eg.repoUrl)}" ${state.edit?"":"disabled"} />
-      </div>
-      <div class="panel">
-        <div class="h2">Live demo URL</div>
-        <input class="input" id="eg-demo" value="${esc(eg.demoUrl)}" ${state.edit?"":"disabled"} />
-      </div>
-      <div class="panel">
-        <div class="h2">Short retro</div>
-        <textarea class="textarea" id="eg-retro" ${state.edit?"":"disabled"}>${esc(eg.retro)}</textarea>
-      </div>
-    </div>
-    <div class="toolbar">
-      <label class="checkbox"><input type="checkbox" id="eg-sub" ${eg.submitted?'checked':''} ${state.edit?"":"disabled"} /> <div>I have exported my progress JSON and sent links.</div></label>
-      <button class="btn" data-action="eg-save" ${state.edit?"":"disabled"}>Save EXIT CODE</button>
-    </div>
-  </section>`;
-}
-
-/* init */
-(async function init(){
-  state.overlay = loadOverlay();
-  try{
-    await loadBase();
-    document.documentElement.dataset.theme="matrix";
-    initRain();
-    wireHeader(); wireApp();
-    render(); drawSpark();
-    if(state.overlay.lastSaved){ const lbl=el('#last-saved'); if(lbl) lbl.textContent=`Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}`; }
-    document.addEventListener('change', e=>{ if(e.target.matches('[data-action="tick"]')) beep(); maybeMilestones(); drawSpark(); });
-  }catch(e){
-    console.error(e);
-    el('#app').innerHTML = `<div class="panel"><div class="h2">Load error</div><pre class="code">${esc(String(e))}</pre>
-    <div class="toolbar"><button class="btn" onclick="localStorage.removeItem('${STORAGE_KEY}');location.reload()">Reset local data</button></div></div>`;
-  }
-})();
+/* ---------- Boot ---------- */
+document.addEventListener('DOMContentLoaded', ()=>{
+  render();
+  wireHeader();
+  saveOverlay(); // sets initial lastSaved timestamp
+});

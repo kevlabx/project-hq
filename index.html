@@ -1,5 +1,6 @@
+<!-- index.html -->
 <!doctype html>
-<html lang="en" data-theme="matrix" data-contrast="high">
+<html lang="en" data-theme="dark" data-contrast="high">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,58 +9,44 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Code-rain canvases (off by default; controlled in Settings) -->
-  <canvas id="rain-top" class="rain-canvas" aria-hidden="true"></canvas>
-  <canvas id="rain-left" class="rain-canvas" aria-hidden="true"></canvas>
-  <canvas id="rain-right" class="rain-canvas" aria-hidden="true"></canvas>
-
   <header class="site-header">
     <div class="brand">
-      <div class="logo-badge" aria-hidden="true">LP</div>
-      <div class="brand-text">
-        <h1>Follow the white rabbit.</h1>
-        <p class="sub">Ship LoomPages in 10 days • Red pill to start • All progress stays on your device • <span class="muted">Designed by Kevin</span></p>
-      </div>
+      <div class="logo">LP</div>
+      <div class="title">Follow the white rabbit.</div>
+      <div class="subtitle small muted">Ship LoomPages in 10 days • Red pill to start • All progress stays on your device • Designed by Kevin</div>
     </div>
 
     <nav class="nav">
-      <button data-view="dashboard">Mission</button>
-      <button data-view="days">Days</button>
-      <button data-view="tasks">Tasks</button>
-      <button data-view="bugs">Bugs</button>
-      <button data-view="docs">SSOT</button>
-      <button data-view="decisions">Decisions</button>
-      <button data-view="parking">Parking</button>
-      <button data-view="prompts">Prompts</button>
-      <button data-view="cheats">Cheat Sheet</button>
-      <button data-view="commands">Commands</button>
+      <button class="pill" data-nav="dashboard">Mission</button>
+      <button class="pill" data-nav="days">Days</button>
+      <button class="pill" data-nav="tasks">Tasks</button>
+      <button class="pill" data-nav="bugs">Bugs</button>
+      <button class="pill" data-nav="ssot">SSOT</button>
+      <button class="pill" data-nav="decisions">Decisions</button>
+      <button class="pill" data-nav="parking">Parking</button>
+      <button class="pill" data-nav="prompts">Prompts</button>
+      <button class="pill" data-nav="cheatsheet">Cheat Sheet</button>
+      <button class="pill" data-nav="commands">Commands</button>
     </nav>
 
     <div class="actions">
       <button id="btn-edit" class="pill">Edit: Off</button>
       <button id="btn-jack" class="pill">Lock In</button>
-      <button id="btn-export" class="pill">Export</button>
-      <button id="btn-import" class="pill">Import</button>
-      <input id="file-import" type="file" accept="application/json" hidden />
+
+      <div class="menu">
+        <button id="btn-export" class="pill">Export</button>
+      </div>
+      <div class="menu">
+        <button id="btn-import" class="pill">Import</button>
+        <input id="file-import" type="file" accept="application/json" hidden />
+      </div>
       <button id="btn-reset" class="pill danger">Reset</button>
+
       <div class="menu settings">
         <button id="btn-settings" class="pill">Settings</button>
         <div class="menu-panel">
-          <label class="row">
-            <input type="checkbox" id="set-contrast" checked />
-            <span>High contrast</span>
-          </label>
-
-          <div class="row">
-            <label for="rain-mode">Code rain</label>
-            <select id="rain-mode">
-              <option value="off" selected>Off (recommended)</option>
-              <option value="top">Top bar</option>
-              <option value="edges">Edge gutters</option>
-            </select>
-          </div>
-
-          <div class="hint small">Code rain is always backgrounded with soft opacity.</div>
+          <label class="row"><input type="checkbox" id="set-contrast" checked /><span>High contrast</span></label>
+          <label class="row"><input type="checkbox" id="set-theme" /><span>Day mode</span></label>
         </div>
       </div>
     </div>
