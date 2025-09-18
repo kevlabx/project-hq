@@ -1,441 +1,477 @@
 // app.js
-/* LoomPages Project HQ logic – local-first state management and UI rendering */
+/* LoomPages Project HQ — Matrix "Game Mode"
+   Local-only SPA: state in localStorage; no external deps.
+   Implements 20 Matrix-mode UX upgrades (pills, construct hub, console theme, story beats, chips, etc.).
+*/
 
+/* ---------------------------
+   Tiny DOM helpers
+---------------------------- */
 const el  = (s, r=document) => r.querySelector(s);
-const els = (s, r=document) => [ ...r.querySelectorAll(s) ];
+const els = (s, r=document) => [...r.querySelectorAll(s)];
 
+/* ---------------------------
+   Constants & Schema
+---------------------------- */
 const STORAGE_KEY = "LP_HQ_STATE_V5";
 const OVERLAY_VERSION = 5;
 
 const DAYS = ["D1","D2","D3","D4","D5","D6","D7","D8","D9","D10"];
 const SPRINT_NAMES = {
-  "D1": "Foundations",
-  "D2": "Style Tokens",
-  "D3": "Section Library v1",
-  "D4": "Editor UX",
-  "D5": "Rule Generator",
-  "D6": "Export",
-  "D7": "Optional AI Copy",
-  "D8": "Quality & Stability",
-  "D9": "Landing & Legal",
-  "D10": "Hardening & Launch"
+  D1:"Foundations", D2:"Style Tokens", D3:"Section Library v1", D4:"Editor UX",
+  D5:"Rule Generator", D6:"Export", D7:"Optional AI Copy", D8:"Quality & Stability",
+  D9:"Landing & Legal", D10:"Hardening & Launch"
 };
+
+/* Story beats (short paraphrases to avoid long quotations) */
+const STORY_BEATS = {
+  D1: "You know the path. Now walk it.",
+  D2: "Choice shapes reality. Choose the tokens.",
+  D3: "There is no spoon—just components.",
+  D4: "Control the inputs to bend the page.",
+  D5: "Rules reveal the pattern beneath.",
+  D6: "Construct the world. Export it.",
+  D7: "Power needs restraint. Make it safe.",
+  D8: "See the code as the user sees it.",
+  D9: "Show, not tell. Then tell clearly.",
+  D10:"Everything that has a beginning has an end. Ship."
+};
+
+/* Base tasks (unchanged content, themed UI elsewhere) */
 const TASKS = [
-  { "id": "D1-T1", "day": "D1", "title": "Scaffold Next app and deploy skeleton", "checklist": [
-      { "text": "Node LTS, PNPM, and Git installed", "done": false },
-      { "text": "Create Next.js app (TypeScript)", "done": false },
-      { "text": "Add Tailwind CSS, ShadCN UI, Zustand, Zod, dnd-kit", "done": false },
-      { "text": "Initialize Git repo and push to GitHub", "done": false },
-      { "text": "Connect Vercel and deploy app", "done": false },
-      { "text": "Open live URL to verify deployment", "done": false }
-    ]
-  },
-  { "id": "D1-T2", "day": "D1", "title": "Repo hygiene and CI basics", "checklist": [
-      { "text": "Set up ESLint and Prettier", "done": false },
-      { "text": "Enable strict TypeScript options", "done": false },
-      { "text": "Write a README.md with project info", "done": false },
-      { "text": "Add a LOG.md for daily notes (optional)", "done": false }
-    ]
-  },
-  { "id": "D2-T1", "day": "D2", "title": "Map tokens to CSS variables", "checklist": [
-      { "text": "Define color, font, spacing, radius tokens", "done": false },
-      { "text": "Expose tokens via CSS variables (Tailwind config)", "done": false },
-      { "text": "Verify contrast (especially for colors)", "done": false }
-    ]
-  },
-  { "id": "D2-T2", "day": "D2", "title": "Build TokensPanel with presets", "checklist": [
-      { "text": "Add UI controls for brandColor, accentColor, etc.", "done": false },
-      { "text": "Include four theme presets", "done": false },
-      { "text": "Save token changes to local state (persisted)", "done": false }
-    ]
-  },
-  { "id": "D3-T1", "day": "D3", "title": "Implement six sections with variants", "checklist": [
-      { "text": "Components: Hero, Features, Pricing, FAQ, Testimonials, CTA", "done": false },
-      { "text": "Each has 3–4 variants (different layouts/styles)", "done": false },
-      { "text": "Ensure all are responsive and accessible", "done": false }
-    ]
-  },
-  { "id": "D3-T2", "day": "D3", "title": "Wire up SectionRegistry and types", "checklist": [
-      { "text": "Register each section type in a central registry", "done": false },
-      { "text": "Define TypeScript props for each section for type-checking", "done": false },
-      { "text": "Confirm no console errors for missing keys/props", "done": false }
-    ]
-  },
-  { "id": "D4-T1", "day": "D4", "title": "Editor forms and validation", "checklist": [
-      { "text": "Create form UI for section content (with labels)", "done": false },
-      { "text": "Use Zod schemas to validate inputs", "done": false },
-      { "text": "Show friendly error messages for invalid inputs", "done": false }
-    ]
-  },
-  { "id": "D4-T2", "day": "D4", "title": "Reorder, duplicate, delete functionality", "checklist": [
-      { "text": "Implement drag-and-drop list of sections (dnd-kit)", "done": false },
-      { "text": "Add buttons to duplicate and delete sections", "done": false },
-      { "text": "Consider simple undo/redo (if time)", "done": false }
-    ]
-  },
-  { "id": "D4-T3", "day": "D4", "title": "Autosave and recover", "checklist": [
-      { "text": "Save editor state to IndexedDB (or localStorage) every 10s", "done": false },
-      { "text": "On load, recover the last saved draft", "done": false }
-    ]
-  },
-  { "id": "D5-T1", "day": "D5", "title": "Brief form and generator rules", "checklist": [
-      { "text": "Create a form to input industry, audience, tone, goal", "done": false },
-      { "text": "Define deterministic rules mapping brief -> sections/variants", "done": false },
-      { "text": "Seed brief presets for 8 industries", "done": false }
-    ]
-  },
-  { "id": "D5-T2", "day": "D5", "title": "Copy templates", "checklist": [
-      { "text": "Prepare placeholder text templates for each section type", "done": false },
-      { "text": "Fill section props with brief-based content (no AI yet)", "done": false },
-      { "text": "Ensure a full page can be generated from brief", "done": false }
-    ]
-  },
-  { "id": "D6-T1", "day": "D6", "title": "Export ZIP that builds", "checklist": [
-      { "text": "Collect all necessary project files in-memory", "done": false },
-      { "text": "Generate a ZIP for download", "done": false },
-      { "text": "Test the exported project on Windows (build & run)", "done": false }
-    ]
-  },
-  { "id": "D6-T2", "day": "D6", "title": "Optional GitHub export with PAT", "checklist": [
-      { "text": "If PAT provided, create a new repo via GitHub API", "done": false },
-      { "text": "Push exported files to new repo", "done": false },
-      { "text": "Include README with deploy instructions", "done": false }
-    ]
-  },
-  { "id": "D7-T1", "day": "D7", "title": "Settings modal and key storage", "checklist": [
-      { "text": "Add OpenAI API Key field in Settings (stored locally)", "done": false },
-      { "text": "Include a global 'AI features off' switch", "done": false }
-    ]
-  },
-  { "id": "D7-T2", "day": "D7", "title": "Edge function and Improve button", "checklist": [
-      { "text": "Create stateless function to send text to OpenAI for improvements", "done": false },
-      { "text": "Implement rate limiting and no-logging for AI requests", "done": false },
-      { "text": "Add UI button to polish text and show spinner/errors", "done": false }
-    ]
-  },
-  { "id": "D8-T1", "day": "D8", "title": "Accessibility and SEO", "checklist": [
-      { "text": "Ensure all images have alt text, form elements have labels", "done": false },
-      { "text": "Add meta tags and sitemap for SEO", "done": false }
-    ]
-  },
-  { "id": "D8-T2", "day": "D8", "title": "Performance and crash safety", "checklist": [
-      { "text": "Eliminate major layout shifts (CLS)", "done": false },
-      { "text": "Optimize images (use appropriate sizes/formats)", "done": false },
-      { "text": "Implement ErrorBoundary and state recovery", "done": false }
-    ]
-  },
-  { "id": "D8-T3", "day": "D8", "title": "Tests", "checklist": [
-      { "text": "Write 20 unit/snapshot tests", "done": false },
-      { "text": "Create a Playwright script: generate -> edit -> export flow", "done": false }
-    ]
-  },
-  { "id": "D9-T1", "day": "D9", "title": "Public landing and demos", "checklist": [
-      { "text": "Design landing page (hero, value props, demo links)", "done": false },
-      { "text": "Capture a short demo GIF or screenshots", "done": false },
-      { "text": "Deploy 6 example sites to share", "done": false }
-    ]
-  },
-  { "id": "D9-T2", "day": "D9", "title": "Docs and legal pages", "checklist": [
-      { "text": "Write Quick Start, Export guide, Tokens guide, FAQ", "done": false },
-      { "text": "Draft Terms of Service, Privacy Policy, AUP, Non-affiliation", "done": false }
-    ]
-  },
-  { "id": "D10-T1", "day": "D10", "title": "Safety and load checks", "checklist": [
-      { "text": "Sanitize all user inputs (prevent XSS)", "done": false },
-      { "text": "Restrict upload types (images only etc.)", "done": false },
-      { "text": "Add Content Security Policy headers to deploys", "done": false },
-      { "text": "Test with 100 sections (extreme case) in editor", "done": false }
-    ]
-  },
-  { "id": "D10-T2", "day": "D10", "title": "Final polish and announce", "checklist": [
-      { "text": "Ensure empty states and tooltips are helpful", "done": false },
-      { "text": "Record a 2-minute demo video", "done": false },
-      { "text": "Test support email workflow", "done": false },
-      { "text": "Point custom domain to Vercel (get HTTPS green lock)", "done": false },
-      { "text": "Prepare announcement post", "done": false }
-    ]
-  }
+  { id:"D1-T1", day:"D1", title:"Scaffold Next app and deploy skeleton", checklist:[
+    { text:"Node LTS, PNPM, and Git installed", done:false },
+    { text:"Create Next.js app (TypeScript)", done:false },
+    { text:"Add Tailwind CSS, ShadCN UI, Zustand, Zod, dnd-kit", done:false },
+    { text:"Initialize Git repo and push to GitHub", done:false },
+    { text:"Connect Vercel and deploy app", done:false },
+    { text:"Open live URL to verify deployment", done:false }
+  ]},
+  { id:"D1-T2", day:"D1", title:"Repo hygiene and CI basics", checklist:[
+    { text:"Set up ESLint and Prettier", done:false },
+    { text:"Enable strict TypeScript options", done:false },
+    { text:"Write a README.md with project info", done:false },
+    { text:"Add a LOG.md for daily notes (optional)", done:false }
+  ]},
+  { id:"D2-T1", day:"D2", title:"Map tokens to CSS variables", checklist:[
+    { text:"Define color, font, spacing, radius tokens", done:false },
+    { text:"Expose tokens via CSS variables (Tailwind config)", done:false },
+    { text:"Verify contrast (especially for colors)", done:false }
+  ]},
+  { id:"D2-T2", day:"D2", title:"Build TokensPanel with presets", checklist:[
+    { text:"Add UI controls for brandColor, accentColor, etc.", done:false },
+    { text:"Include four theme presets", done:false },
+    { text:"Save token changes to local state (persisted)", done:false }
+  ]},
+  { id:"D3-T1", day:"D3", title:"Implement six sections with variants", checklist:[
+    { text:"Components: Hero, Features, Pricing, FAQ, Testimonials, CTA", done:false },
+    { text:"Each has 3–4 variants (different layouts/styles)", done:false },
+    { text:"Ensure all are responsive and accessible", done:false }
+  ]},
+  { id:"D3-T2", day:"D3", title:"Wire up SectionRegistry and types", checklist:[
+    { text:"Register each section type in a central registry", done:false },
+    { text:"Define TypeScript props for each section for type-checking", done:false },
+    { text:"Confirm no console errors for missing keys/props", done:false }
+  ]},
+  { id:"D4-T1", day:"D4", title:"Editor forms and validation", checklist:[
+    { text:"Create form UI for section content (with labels)", done:false },
+    { text:"Use Zod schemas to validate inputs", done:false },
+    { text:"Show friendly error messages for invalid inputs", done:false }
+  ]},
+  { id:"D4-T2", day:"D4", title:"Reorder, duplicate, delete functionality", checklist:[
+    { text:"Implement drag-and-drop list of sections (dnd-kit)", done:false },
+    { text:"Add buttons to duplicate and delete sections", done:false },
+    { text:"Consider simple undo/redo (if time)", done:false }
+  ]},
+  { id:"D4-T3", day:"D4", title:"Autosave and recover", checklist:[
+    { text:"Save editor state to IndexedDB (or localStorage) every 10s", done:false },
+    { text:"On load, recover the last saved draft", done:false }
+  ]},
+  { id:"D5-T1", day:"D5", title:"Brief form and generator rules", checklist:[
+    { text:"Create a form to input industry, audience, tone, goal", done:false },
+    { text:"Define deterministic rules mapping brief -> sections/variants", done:false },
+    { text:"Seed brief presets for 8 industries", done:false }
+  ]},
+  { id:"D5-T2", day:"D5", title:"Copy templates", checklist:[
+    { text:"Prepare placeholder text templates for each section type", done:false },
+    { text:"Fill section props with brief-based content (no AI yet)", done:false },
+    { text:"Ensure a full page can be generated from brief", done:false }
+  ]},
+  { id:"D6-T1", day:"D6", title:"Export ZIP that builds", checklist:[
+    { text:"Collect all necessary project files in-memory", done:false },
+    { text:"Generate a ZIP for download", done:false },
+    { text:"Test the exported project on Windows (build & run)", done:false }
+  ]},
+  { id:"D6-T2", day:"D6", title:"Optional GitHub export with PAT", checklist:[
+    { text:"If PAT provided, create a new repo via GitHub API", done:false },
+    { text:"Push exported files to new repo", done:false },
+    { text:"Include README with deploy instructions", done:false }
+  ]},
+  { id:"D7-T1", day:"D7", title:"Settings modal and key storage", checklist:[
+    { text:"Add OpenAI API Key field in Settings (stored locally)", done:false },
+    { text:"Include a global 'AI features off' switch", done:false }
+  ]},
+  { id:"D7-T2", day:"D7", title:"Edge function and Improve button", checklist:[
+    { text:"Create stateless function to send text to OpenAI for improvements", done:false },
+    { text:"Implement rate limiting and no-logging for AI requests", done:false },
+    { text:"Add UI button to polish text and show spinner/errors", done:false }
+  ]},
+  { id:"D8-T1", day:"D8", title:"Accessibility and SEO", checklist:[
+    { text:"Ensure all images have alt text, form elements have labels", done:false },
+    { text:"Add meta tags and sitemap for SEO", done:false }
+  ]},
+  { id:"D8-T2", day:"D8", title:"Performance and crash safety", checklist:[
+    { text:"Eliminate major layout shifts (CLS)", done:false },
+    { text:"Optimize images (use appropriate sizes/formats)", done:false },
+    { text:"Implement ErrorBoundary and state recovery", done:false }
+  ]},
+  { id:"D8-T3", day:"D8", title:"Tests", checklist:[
+    { text:"Write 20 unit/snapshot tests", done:false },
+    { text:"Create a Playwright script: generate -> edit -> export flow", done:false }
+  ]},
+  { id:"D9-T1", day:"D9", title:"Public landing and demos", checklist:[
+    { text:"Design landing page (hero, value props, demo links)", done:false },
+    { text:"Capture a short demo GIF or screenshots", done:false },
+    { text:"Deploy 6 example sites to share", done:false }
+  ]},
+  { id:"D9-T2", day:"D9", title:"Docs and legal pages", checklist:[
+    { text:"Write Quick Start, Export guide, Tokens guide, FAQ", done:false },
+    { text:"Draft Terms of Service, Privacy Policy, AUP, Non-affiliation", done:false }
+  ]},
+  { id:"D10-T1", day:"D10", title:"Safety and load checks", checklist:[
+    { text:"Sanitize all user inputs (prevent XSS)", done:false },
+    { text:"Restrict upload types (images only etc.)", done:false },
+    { text:"Add Content Security Policy headers to deploys", done:false },
+    { text:"Test with 100 sections (extreme case) in editor", done:false }
+  ]},
+  { id:"D10-T2", day:"D10", title:"Final polish and announce", checklist:[
+    { text:"Ensure empty states and tooltips are helpful", done:false },
+    { text:"Record a 2-minute demo video", done:false },
+    { text:"Test support email workflow", done:false },
+    { text:"Point custom domain to Vercel (get HTTPS green lock)", done:false },
+    { text:"Prepare announcement post", done:false }
+  ]}
 ];
 
+/* Daily prompts */
 const DEFAULT_PROMPTS = {
-  D1: {
-    start: `Context: Build a minimal Next.js App Router app with TypeScript, Tailwind, shadcn/ui, Zustand, Zod, and dnd-kit. Strict TS. Folders: app, components, lib, public. Add TokensProvider and Preview components. Push to GitHub and deploy to Vercel (Windows, Node LTS, pnpm, Git).
+  D1:{ start:`Context: Build a minimal Next.js App Router app with TypeScript, Tailwind, shadcn/ui, Zustand, Zod, and dnd-kit. Strict TS. Folders: app, components, lib, public. Add TokensProvider and Preview components. Push to GitHub and deploy to Vercel (Windows, Node LTS, pnpm, Git).
 Task: Provide exact Windows PowerShell commands, installation steps, minimal files (with code), and a short test plan.`,
-    end: `List what we finished today.
+       end:`List what we finished today.
 Top three risks for tomorrow.
-Short next steps (under 200 words).`
-  },
-  D2: {
-    start: `Context: TokensProvider and Preview exist.
+Short next steps (under 200 words).` },
+  D2:{ start:`Context: TokensProvider and Preview exist.
 Goal: Create a TokensPanel to edit brandColor, accentColor, fontPair, fontScale, spacingScale, radius. Map tokens to CSS variables and Tailwind. Make four presets: Clean, Friendly, Bold, Minimal.
 Show code linking tokens to live preview.`,
-    end: `Summarize today's token work. Note any styling bugs. Propose two refactors for tomorrow.`
-  },
-  D3: {
-    start: `Context: Tokens and preview work.
+       end:`Summarize today's token work. Note any styling bugs. Propose two refactors for tomorrow.` },
+  D3:{ start:`Context: Tokens and preview work.
 Goal: Build six section types (Hero, Features, Pricing, FAQ, Testimonials, CTA) with 3–4 variants each. Ensure they are accessible and responsive. Provide a SectionRegistry and typed props.`,
-    end: `List sections and variants completed. Note any missing alt text or keyboard traps. Action items for Day 4.`
-  },
-  D4: {
-    start: `Context: Sections and registry ready.
+       end:`List sections and variants completed. Note any missing alt text or keyboard traps. Action items for Day 4.` },
+  D4:{ start:`Context: Sections and registry ready.
 Goal: Build an Editor panel with Zod validation, inline error messages, drag-and-drop reorder (dnd-kit), duplicate/delete, and (if possible) undo/redo. Autosave to IndexedDB every 10 seconds.`,
-    end: `Describe any UX rough spots in the Editor. Name one <1h improvement. Confirm autosave & recovery with a quick test summary.`
-  },
-  D5: {
-    start: `Context: Editor works.
+       end:`Describe any UX rough spots in the Editor. Name one <1h improvement. Confirm autosave & recovery with a quick test summary.` },
+  D5:{ start:`Context: Editor works.
 Goal: Add a Brief form (industry, audience, tone, goal). Implement generateFromBrief to produce a PageSchema (select sections, variants, and placeholder text – no AI). Seed 8 industries (Cafe, Barber, Interior Design, Fitness, Tutor, Photographer, Bakery, Agency).`,
-    end: `Summarize brief-to-section rules (maybe a table). Note weak layouts. Suggest tweaks.`
-  },
-  D6: {
-    start: `Context: Can generate & edit a page.
+       end:`Summarize brief-to-section rules (maybe a table). Note weak layouts. Suggest tweaks.` },
+  D6:{ start:`Context: Can generate & edit a page.
 Goal: Implement exportProject to build a Next.js static site in-memory and download a ZIP. Include package.json, pages, components/sections, tailwind.config, README. Optional: support GitHub export via PAT.`,
-    end: `Confirm exported project builds on Windows. List any issues and fixes. Suggest one way to reduce export size.`
-  },
-  D7: {
-    start: `Context: Export works.
+       end:`Confirm exported project builds on Windows. List any issues and fixes. Suggest one way to reduce export size.` },
+  D7:{ start:`Context: Export works.
 Goal: Add a Settings modal to store an OpenAI API key (localStorage). Add an "AI improve" feature: a toggle to enable AI text polish. Implement a function (using fetch or edge function) to send text to OpenAI for improvement (accessibility/SEO/perf), with rate limiting and no logging.`,
-    end: `Write a security note about key handling. List tests confirming no key leaves browser except to OpenAI.`
-  },
-  D8: {
-    start: `Context: AI polish optional.
+       end:`Write a security note about key handling. List tests confirming no key leaves browser except to OpenAI.` },
+  D8:{ start:`Context: AI polish optional.
 Goal: Accessibility/SEO/Performance sweep. Add meta tags and sitemap. Fix layout shifts and optimize images. Implement ErrorBoundary to catch errors and allow state recovery. Write ~20 tests and a Playwright smoke test (gen→edit→export).`,
-    end: `Report Lighthouse scores (Perf, A11y, SEO) and top fixes for each. Paste a summary of Playwright test results.`
-  },
-  D9: {
-    start: `Context: Quality passes done.
+       end:`Report Lighthouse scores (Perf, A11y, SEO) and top fixes for each. Paste a summary of Playwright test results.` },
+  D9:{ start:`Context: Quality passes done.
 Goal: Publish a landing page explaining brief→build→edit→export→deploy flow. Deploy six demo sites. Write docs: Quick Start, Export, Tokens, FAQ. Add legal pages: ToS, Privacy, AUP, Non-affiliation.`,
-    end: `Review landing and docs for clarity. Suggest two small copy edits to better target non-developers.`
-  },
-  D10: {
-    start: `Context: Site and docs live.
+       end:`Review landing and docs for clarity. Suggest two small copy edits to better target non-developers.` },
+  D10:{ start:`Context: Site and docs live.
 Goal: Final hardening. Sanitize inputs, restrict file types, set CSP headers. Test with 100 sections for performance. Create a 2-min demo video. Test support email. Point custom domain to Vercel (HTTPS). Announce on social.`,
-    end: `Final retro – WWW (Went Well), WNI (Needs Improvement), Next steps (short plan for week two).`
-  }
+       end:`Final retro – WWW (Went Well), WNI (Needs Improvement), Next steps (short plan for week two).` }
 };
 
-function emptyOverlay() {
+/* ---------------------------
+   State & Persistence
+---------------------------- */
+function emptyOverlay(){
   return {
     version: OVERLAY_VERSION,
     view: "dashboard",
     day: "D1",
     edit: false,
     locked: false,
-    overlayNotes: "",
     hasSeenWelcome: false,
     readinessPct: 0,
     lastSaved: null,
+    // Story/game bits
+    chips: {},              // achievements/skill chips
+    agents: [],             // rebranded "bugs" (future use)
     settings: {
       contrast: true,
-      theme: "dark"
+      theme: "dark",        // 'dark' | 'light' | 'console'
+      storyMode: true,
+      sfx: false,
+      haptics: false
     },
     prompts: DEFAULT_PROMPTS,
     tasks: TASKS
   };
 }
 
-function loadOverlay() {
-  try {
+function loadOverlay(){
+  try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyOverlay();
+    if(!raw) return emptyOverlay();
     const o = JSON.parse(raw);
-    if (o.version !== OVERLAY_VERSION) return emptyOverlay();
-    return { ...emptyOverlay(), ...o, prompts: o.prompts || DEFAULT_PROMPTS, tasks: o.tasks || TASKS };
-  } catch {
+    if(o.version !== OVERLAY_VERSION) return emptyOverlay();
+    const base = emptyOverlay();
+    return { ...base, ...o,
+      prompts: o.prompts || DEFAULT_PROMPTS,
+      tasks: Array.isArray(o.tasks) ? o.tasks : TASKS,
+      settings: { ...base.settings, ...(o.settings||{}) },
+      chips: o.chips || {},
+      agents: Array.isArray(o.agents) ? o.agents : []
+    };
+  }catch{
     return emptyOverlay();
   }
 }
 
-function saveOverlay() {
+const state = { overlay: loadOverlay() };
+
+function saveOverlay(){
   state.overlay.lastSaved = new Date().toISOString();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.overlay));
   updateLastSaved();
+  updateOperator();
 }
 
-const state = {
-  overlay: loadOverlay()
-};
+/* ---------------------------
+   Derived metrics
+---------------------------- */
+function percentForDay(day){
+  const tasks = state.overlay.tasks.filter(t => t.day === day);
+  let total = 0, done = 0;
+  tasks.forEach(t => t.checklist.forEach(i => { total++; if(i.done) done++; }));
+  return total ? Math.round((done/total)*100) : 0;
+}
+function percentOverall(){
+  let total = 0, done = 0;
+  state.overlay.tasks.forEach(t => t.checklist.forEach(i => { total++; if(i.done) done++; }));
+  return total ? (done/total)*100 : 0;
+}
+function currentStreak(){
+  let s = 0;
+  for(const d of DAYS){
+    if(percentForDay(d) === 100) s++; else break;
+  }
+  return s;
+}
+function traceRiskLabel(){
+  const last = state.overlay.lastSaved ? new Date(state.overlay.lastSaved) : new Date();
+  const hours = Math.max(0, (Date.now() - last.getTime()) / 36e5);
+  if(hours > 48) return "trace risk high";
+  if(hours > 24) return "trace risk rising";
+  return "trace risk low";
+}
 
-/* ---------- Render ---------- */
-
-function render() {
-  // apply theme and contrast
-  document.documentElement.dataset.theme = (state.overlay.settings.theme === "light" ? "light" : "dark");
-  document.documentElement.dataset.contrast = (state.overlay.settings.contrast ? "high" : "normal");
+/* ---------------------------
+   Rendering
+---------------------------- */
+function render(){
+  // theme & contrast
+  const theme = state.overlay.settings.theme;
+  document.documentElement.dataset.theme = (theme === "light" ? "light" : theme === "console" ? "console" : "dark");
+  document.documentElement.dataset.contrast = state.overlay.settings.contrast ? "high" : "normal";
   document.body.classList.toggle('jackin', !!state.overlay.locked);
+  document.body.classList.toggle('story-on', !!state.overlay.settings.storyMode);
 
-  // update header active states
-  els('.nav .pill').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.nav === state.overlay.view);
-  });
-  el('#btn-edit')?.classList.toggle('active', !!state.overlay.edit);
-  el('#btn-edit')?.setAttribute('aria-pressed', String(!!state.overlay.edit));
-  el('#btn-edit')?.replaceChildren(document.createTextNode(`Edit: ${state.overlay.edit ? 'On' : 'Off'}`));
-  el('#btn-jack')?.replaceChildren(document.createTextNode(state.overlay.locked ? 'Exit Focus' : 'Focus Mode'));
+  // header nav active
+  els('.nav .pill').forEach(btn => btn.classList.toggle('active', btn.dataset.nav === state.overlay.view));
+  const editBtn = el('#btn-edit');
+  if(editBtn){
+    editBtn.classList.toggle('active', !!state.overlay.edit);
+    editBtn.setAttribute('aria-pressed', String(!!state.overlay.edit));
+    editBtn.textContent = `Edit: ${state.overlay.edit ? 'On' : 'Off'}`;
+  }
+  const jackBtn = el('#btn-jack');
+  if(jackBtn){
+    jackBtn.textContent = state.overlay.locked ? (jackBtn.dataset.labelOn || "Unjack") : (jackBtn.dataset.labelOff || "Jack In");
+    jackBtn.setAttribute('aria-pressed', String(!!state.overlay.locked));
+  }
 
-  // settings checkbox states
-  const contrastCbx = el('#set-contrast');
-  if (contrastCbx) contrastCbx.checked = !!state.overlay.settings.contrast;
-  const themeCbx = el('#set-theme');
-  if (themeCbx) themeCbx.checked = (state.overlay.settings.theme === "light");
+  // sync settings controls
+  const cbx = {
+    contrast: el('#set-contrast'),
+    theme: el('#set-theme'),
+    story: el('#set-story'),
+    console: el('#set-console'),
+    sfx: el('#set-sfx'),
+    haptics: el('#set-haptics'),
+  };
+  if(cbx.contrast) cbx.contrast.checked = !!state.overlay.settings.contrast;
+  if(cbx.theme)    cbx.theme.checked    = (state.overlay.settings.theme === "light");
+  if(cbx.console)  cbx.console.checked  = (state.overlay.settings.theme === "console");
+  if(cbx.story)    cbx.story.checked    = !!state.overlay.settings.storyMode;
+  if(cbx.sfx)      cbx.sfx.checked      = !!state.overlay.settings.sfx;
+  if(cbx.haptics)  cbx.haptics.checked  = !!state.overlay.settings.haptics;
 
-  // render main view
-  const app = el('#app');
-  if (!app) return;
-  let html = "";
   const v = state.overlay.view;
-  if (v === "dashboard") {
-    html += (needsWelcome() ? welcomeView() : "");
-    html += missionHero();
+  const app = el('#app');
+  if(!app) return;
+
+  let html = "";
+  if(v === "dashboard"){
+    html += welcomeMaybe();
+    html += constructHubSection();
+    html += intelCards();
     html += newPanelWhatYouBuild();
     html += newPanelHowItWorks();
-    html += dayRail();
-  } else if (v === "days") {
+    html += dayRail(); // list rail as well (redundant but helpful)
+  } else if(v === "days"){
     html += daysView();
-  } else if (v === "prompts") {
+  } else if(v === "prompts"){
     html += commonPromptsPanel();
     html += allPromptsPanel();
-  } else if (v === "cheatsheet") {
+  } else if(v === "cheatsheet"){
     html += cheatSheetView();
-  } else if (v === "commands") {
+  } else if(v === "commands"){
     html += commandsView();
+  } else if(v === "agents"){
+    html += agentsView();
   } else {
     html += placeholderView(v);
   }
+
   app.innerHTML = html;
+
+  // After DOM injection: wire & decorate
   wireDynamic();
+  paintConstruct();
   updateLastSaved();
+  updateOperator();
 }
 
-/* ---------- Views ---------- */
-
-function needsWelcome() {
-  return !state.overlay.hasSeenWelcome;
-}
-
-function welcomeView() {
+/* ----- Dashboard pieces ----- */
+function welcomeMaybe(){
+  if(state.overlay.hasSeenWelcome) return "";
+  // Red/Blue pill welcome
   return `
   <section class="panel">
-    <div class="h2">Welcome!</div>
-    <p class="small muted">Build a landing page in 10 days. All progress stays <em>only</em> in your browser (no accounts).</p>
-    <ol class="small">
-      <li>Open <strong>Days</strong> and copy the Start prompt into your AI assistant.</li>
-      <li>Code in your repo, deploy the site, then check off tasks here.</li>
-      <li>End the day with a short retro using the End prompt.</li>
-    </ol>
+    <div class="h2">Welcome to the Construct.</div>
+    <p class="small muted">Build a landing page in 10 days. All progress stays <em>only</em> in your browser.</p>
     <div class="toolbar">
-      <button class="btn primary" data-action="start-mission">Start Day 1</button>
-      <button class="btn" data-action="see-plan">View 10-Day Plan</button>
+      <button class="pill red" data-action="start-mission" aria-label="Take red pill — start Day 1">Red pill — enter the build</button>
+      <button class="pill blue" data-action="see-plan" aria-label="Take blue pill — view plan">Blue pill — peek at the plan</button>
     </div>
   </section>`;
 }
 
-function missionHero() {
-  const pct = clamp(state.overlay.readinessPct || 0, 0, 100);
-  const percent = Math.round(pct);
-  // Determine current streak (consecutive days completed, up to today)
-  let currentStreak = 0;
-  for (const d of DAYS) {
-    const tasksForDay = state.overlay.tasks.filter(t => t.day === d);
-    const dayDone = tasksForDay.length > 0 && tasksForDay.every(t => t.checklist.every(item => item.done));
-    if (dayDone) {
-      currentStreak++;
-    } else break;
-  }
+function constructHubSection(){
+  const pct = Math.round(clamp(percentOverall(),0,100));
+  // orbit nodes rendered by paintConstruct, here provide shell markup
+  const nodes = DAYS.map((d,i)=>`<button class="node" data-day="${d}" style="--angle: ${i*36}deg; --pct: ${percentForDay(d)}" aria-label="Open ${d}"></button>`).join("");
   return `
-  <section class="panel">
+  <section class="panel construct-hub" aria-label="Construct Hub">
+    <div class="construct">
+      <div class="core-ring" role="img" aria-label="Overall completion" style="--pct: ${pct}"></div>
+      <div class="orbit">${nodes}</div>
+    </div>
+    <div class="construct-legend small">
+      <span class="chip">Overall</span>
+      <span class="chip">D1–D10 nodes</span>
+      <span class="chip ok">Skill chips</span>
+    </div>
+  </section>`;
+}
+
+function intelCards(){
+  const todayIdx = DAYS.indexOf(state.overlay.day);
+  const today = state.overlay.day;
+  const yesterday = DAYS[Math.max(0, todayIdx-1)];
+  const tStart = (state.overlay.prompts[today]||{}).start || "—";
+  const yEnd  = (state.overlay.prompts[yesterday]||{}).end || "—";
+  return `
+  <section class="panel intel">
     <div class="grid cols-3">
-      <div class="card center">
-        <div class="ring" style="--pct:${percent}%"><span>${percent}%</span></div>
-      </div>
-      <div>
-        <div class="h2">Project Progress</div>
-        <p class="small muted">Follow daily prompts, complete tasks, and ship your project. Nothing leaves your browser.</p>
-        <div class="toolbar">
-          <button class="btn" data-action="start-mission">Start Day 1</button>
-          <button class="btn" data-action="see-plan">View Plan</button>
-        </div>
-      </div>
-      <div>
-        <div class="h2">Completion</div>
-        <div class="small muted">Completed <strong>${currentStreak}</strong> of 10 days. Export JSON anytime to save progress.</div>
-      </div>
+      <div class="card intel-card"><div class="label">TODAY</div><div class="intel-body" id="intel-today">${escapeHtml(firstTwoLines(tStart))}</div></div>
+      <div class="card intel-card"><div class="label">RISKS</div><div class="intel-body" id="intel-risks">${escapeHtml(topRisksFromEnd(yEnd))}</div></div>
+      <div class="card intel-card"><div class="label">NEXT</div><div class="intel-body" id="intel-next">${escapeHtml(nextStepsFromStart(tStart))}</div></div>
     </div>
   </section>`;
 }
-
-function newPanelWhatYouBuild() {
-  return `
-  <section class="panel">
-    <div class="h2">What you'll build</div>
-    <p class="small">A custom landing page generator with editable sections, theme tokens, export to Next.js, and optional AI content polish. By Day 10, you'll have a deployed landing page and a toolkit to generate more.</p>
-  </section>`;
+function firstTwoLines(s){
+  return String(s).split(/\n/).slice(0,2).join(" ").trim() || "—";
+}
+function topRisksFromEnd(s){
+  // naive: pick lines with 'risk' or return short hint
+  const lines = String(s).split(/\n/).filter(x=>/risk/i.test(x)).slice(0,2);
+  return lines.join(" ").trim() || "Keep scope small. Deploy daily.";
+}
+function nextStepsFromStart(s){
+  const lines = String(s).split(/\n/).filter(x=>/goal|task|plan|steps|implement|create/i.test(x)).slice(0,1);
+  return lines.join(" ").trim() || "Copy Start prompt, ship one commit.";
 }
 
-function newPanelHowItWorks() {
-  return `
-  <section class="panel">
-    <div class="h2">How this works</div>
-    <ol class="small">
-      <li>Each <strong>Day</strong> has a Start prompt (for planning/coding) and an End prompt (for reflection).</li>
-      <li>Use the prompts with ChatGPT or similar to guide implementation.</li>
-      <li>Tick off tasks as you complete them. All data stays local (you can export/import progress).</li>
-    </ol>
-  </section>`;
-}
-
-function dayRail() {
+/* ----- Other views ----- */
+function dayRail(){
   let itemsHtml = "";
-  for (const d of DAYS) {
-    // calculate completion percent for day d
-    let total = 0, done = 0;
-    const tasksForDay = state.overlay.tasks.filter(t => t.day === d);
-    for (const task of tasksForDay) {
-      for (const item of task.checklist) {
-        total++;
-        if (item.done) done++;
-      }
-    }
-    const pct = total ? Math.round((done / total) * 100) : 0;
+  for(const d of DAYS){
+    const pct = percentForDay(d);
     itemsHtml += `<div class="day-card">
-        <div><strong>Day ${d.slice(1)}</strong><span class="badge muted small" style="margin-left:8px">${pct}%</span></div>
-        <div class="right"><button class="btn" data-action="open-day" data-day="${d}">Open</button></div>
-      </div>`;
+      <div><strong>Day ${d.slice(1)}</strong><span class="badge muted small" style="margin-left:8px">${pct}%</span></div>
+      <div class="right"><button class="btn" data-action="open-day" data-day="${d}">Open</button></div>
+    </div>`;
   }
-  return `
-  <section class="panel">
-    <div class="h2">10-day mission rail</div>
-    <div class="list">${itemsHtml}</div>
-  </section>`;
+  return `<section class="panel"><div class="h2">10-day mission rail</div><div class="list">${itemsHtml}</div></section>`;
 }
 
-function daysView() {
+function daysView(){
   const d = state.overlay.day;
-  const prom = state.overlay.prompts[d] || { start: "", end: "" };
-  let html = `<section class="panel">
+  const prom = state.overlay.prompts[d] || { start:"", end:"" };
+
+  // White Rabbit early runway (D1–D3)
+  const earlyDots = [ "D1","D2","D3" ].map(x=>{
+    const filled = percentForDay(x) === 100 ? "background:var(--accent-green)" : "background:transparent";
+    return `<i style="display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid var(--line);${filled};margin-right:6px"></i>`;
+  }).join("");
+
+  // Story beat
+  const beat = state.overlay.settings.storyMode ? `<div class="card"><div class="small muted">Story beat</div><div>${escapeHtml(STORY_BEATS[d]||"Stay the course.")}</div></div>` : "";
+
+  // Day pills with ring %
+  const tabs = DAYS.map(x=>{
+    const pct = percentForDay(x);
+    return `<button class="pill ${x===d?'active':''}" data-daytab="${x}" data-day="${x}" style="--pct:${pct}%">${x}</button>`;
+  }).join("");
+
+  let html = `
+  <section class="panel">
     <div class="h2">Day ${d.slice(1)}${SPRINT_NAMES[d] ? ' – '+SPRINT_NAMES[d] : ''}</div>
+    <div class="small muted" aria-hidden="true">${earlyDots}</div>
     <div class="grid cols-2">
-      <div class="card">
-        <div class="h2">Start</div>
+      <div class="packet">
+        <div class="packet-title small muted">Packet: Start</div>
         <div class="code" id="code-start">${escapeHtml(prom.start)}</div>
-        <div class="toolbar"><button class="btn" data-copy="#code-start">Copy</button></div>
+        <div class="toolbar"><button class="btn" data-copy="#code-start" data-copy-label="Packet copied.">Copy</button></div>
       </div>
-      <div class="card">
-        <div class="h2">End</div>
+      <div class="packet">
+        <div class="packet-title small muted">Packet: End</div>
         <div class="code" id="code-end">${escapeHtml(prom.end)}</div>
-        <div class="toolbar"><button class="btn" data-copy="#code-end">Copy</button></div>
+        <div class="toolbar"><button class="btn" data-copy="#code-end" data-copy-label="Packet copied.">Copy</button></div>
       </div>
     </div>
-    <div class="toolbar">
-      ${DAYS.map(x => `<button class="pill ${x === d ? 'active' : ''}" data-daytab="${x}">${x}</button>`).join("")}
-    </div>
+    ${beat}
+    <div class="toolbar" aria-label="Day tabs">${tabs}</div>
   </section>`;
-  // Tasks checklist for the day
+
+  // tasks
   html += `<section class="panel"><div class="h2">Tasks</div>`;
   const tasks = state.overlay.tasks.filter(t => t.day === d);
-  for (const task of tasks) {
+  for(const task of tasks){
     html += `<div><strong>${escapeHtml(task.title)}</strong></div><ul class="small" style="margin:4px 0 12px 0;">`;
-    task.checklist.forEach((item, i) => {
-      html += `<li><label><input type="checkbox" data-task="${task.id}" data-item="${i}" ${item.done ? 'checked' : ''}/> <span>${escapeHtml(item.text)}</span></label></li>`;
+    task.checklist.forEach((item,i)=>{
+      html += `<li><label><input type="checkbox" data-task="${task.id}" data-item="${i}" ${item.done?'checked':''}/> <span>${escapeHtml(item.text)}</span></label></li>`;
     });
     html += `</ul>`;
   }
@@ -443,7 +479,7 @@ function daysView() {
   return html;
 }
 
-function commonPromptsPanel() {
+function commonPromptsPanel(){
   const lines = [
     "Give a 2-sentence goal for today and a 5-step plan.",
     "Draft 3 commit messages (each prefixed with D{day}:, ≤ 65 chars).",
@@ -456,45 +492,39 @@ function commonPromptsPanel() {
     "Write a 100-word retro: WWW / WNI / Next.",
     "Create a 3-item checklist to start tomorrow."
   ];
-  return `
-  <section class="panel">
-    <div class="h2">Common Prompts</div>
-    <div class="code">${lines.map(s => "• " + s).join("\n")}</div>
-  </section>`;
+  return `<section class="panel"><div class="h2">Common Prompts</div><div class="code">${lines.map(s=>"• "+s).join("\n")}</div></section>`;
 }
 
-function allPromptsPanel() {
-  const blocks = DAYS.map(d => {
+function allPromptsPanel(){
+  const blocks = DAYS.map(d=>{
     const p = state.overlay.prompts[d];
     return `<div class="card">
       <div class="h2">${d}</div>
       <div class="small muted">Start</div>
       <div class="code" id="p-${d}-s">${escapeHtml(p.start)}</div>
-      <div class="toolbar"><button class="btn" data-copy="#p-${d}-s">Copy</button></div>
+      <div class="toolbar"><button class="btn" data-copy="#p-${d}-s" data-copy-label="Packet copied.">Copy</button></div>
       <div class="space"></div>
       <div class="small muted">End</div>
       <div class="code" id="p-${d}-e">${escapeHtml(p.end)}</div>
-      <div class="toolbar"><button class="btn" data-copy="#p-${d}-e">Copy</button></div>
+      <div class="toolbar"><button class="btn" data-copy="#p-${d}-e" data-copy-label="Packet copied.">Copy</button></div>
     </div>`;
   }).join("");
   return `<section class="panel"><div class="h2">All prompts (for reference)</div><div class="grid cols-3">${blocks}</div></section>`;
 }
 
-function cheatSheetView() {
+function cheatSheetView(){
   return `
   <section class="panel">
     <div class="h2">Cheat Sheet</div>
     <div class="grid cols-3">
-      <div class="card">
-        <div class="h2">VS Code</div>
+      <div class="card"><div class="h2">VS Code</div>
         <div class="code">Ctrl + P  – Quick open file
 Ctrl + Shift + P  – Command palette
 Ctrl + /  – Toggle comment
 Alt + ↑/↓  – Move line up/down
 Ctrl + B  – Toggle sidebar visibility</div>
       </div>
-      <div class="card">
-        <div class="h2">Git basics</div>
+      <div class="card"><div class="h2">Git basics</div>
         <div class="code">git status      – Check changes
 git add .       – Stage all changes
 git commit -m "msg"  – Commit changes
@@ -502,8 +532,7 @@ git push        – Push to remote
 git switch -c feature/x  – Create & switch to branch
 git restore --staged .   – Unstage all changes</div>
       </div>
-      <div class="card">
-        <div class="h2">Shell / PNPM</div>
+      <div class="card"><div class="h2">Shell / PNPM</div>
         <div class="code">node -v           – Check Node version
 npm -v            – Check npm version
 pnpm -v           – Check pnpm version
@@ -514,13 +543,12 @@ pnpm dev          – Run dev server (if set up)</div>
   </section>`;
 }
 
-function commandsView() {
+function commandsView(){
   return `
   <section class="panel">
     <div class="h2">Commands</div>
     <div class="grid cols-3">
-      <div class="card">
-        <div class="h2">Windows</div>
+      <div class="card"><div class="h2">Windows</div>
         <div class="code">node -v
 npm -v
 pnpm -v
@@ -530,8 +558,7 @@ pnpm i
 pnpm dev
 pnpm dlx serve .</div>
       </div>
-      <div class="card">
-        <div class="h2">macOS</div>
+      <div class="card"><div class="h2">macOS</div>
         <div class="code">node -v
 npm -v
 pnpm -v
@@ -541,8 +568,7 @@ pnpm install
 pnpm dev
 pnpm dlx serve .</div>
       </div>
-      <div class="card">
-        <div class="h2">Linux</div>
+      <div class="card"><div class="h2">Linux</div>
         <div class="code">node -v
 npm -v
 pnpm -v
@@ -556,220 +582,290 @@ pnpm dlx serve .</div>
   </section>`;
 }
 
-function placeholderView(name) {
-  const title = name.charAt(0).toUpperCase() + name.slice(1);
+function agentsView(){
+  const n = state.overlay.agents.length;
+  const list = n ? state.overlay.agents.map((a,i)=>`<li>${escapeHtml(a)}</li>`).join("") : `<li class="muted">No agents currently detected.</li>`;
+  return `<section class="panel"><div class="h2">Agents</div><ul>${list}</ul></section>`;
+}
+
+function placeholderView(name){
+  const title = name.charAt(0).toUpperCase()+name.slice(1);
   return `<section class="panel">
     <div class="h2">${escapeHtml(title)}</div>
-    <p class="small muted">This section is under construction. For now, please use the <strong>Days</strong>, <strong>Prompts</strong>, <strong>Cheat Sheet</strong>, or <strong>Commands</strong> sections above.</p>
+    <p class="small muted">This section is under construction. Use <strong>Days</strong>, <strong>Prompts</strong>, <strong>Cheat Sheet</strong>, or <strong>Commands</strong>.</p>
   </section>`;
 }
 
-/* ---------- Wire up UI ---------- */
-
-function wireHeader() {
-  // top nav buttons
-  els('.nav [data-nav]').forEach(btn => {
-    btn.addEventListener('click', () => {
+/* ---------------------------
+   Header wiring & global UX
+---------------------------- */
+function wireHeader(){
+  // nav
+  els('.nav [data-nav]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
       state.overlay.view = btn.dataset.nav;
-      saveOverlay();
-      render();
+      saveOverlay(); render();
     });
   });
 
-  // header action buttons
-  el('#btn-edit')?.addEventListener('click', () => {
+  // edit / jack in
+  el('#btn-edit')?.addEventListener('click', ()=>{
     state.overlay.edit = !state.overlay.edit;
     toast(state.overlay.edit ? "Edit enabled" : "Edit disabled");
-    saveOverlay();
-    render();
+    saveOverlay(); render();
   });
-
-  el('#btn-jack')?.addEventListener('click', () => {
+  el('#btn-jack')?.addEventListener('click', ()=>{
     state.overlay.locked = !state.overlay.locked;
     toast(state.overlay.locked ? "Focus mode on." : "Focus mode off.");
-    saveOverlay();
-    render();
+    saveOverlay(); render();
   });
 
-  el('#btn-export')?.addEventListener('click', () => {
-    const name = `lp-hq-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-    const blob = new Blob([ JSON.stringify(state.overlay, null, 2) ], { type: "application/json" });
+  // export/import/reset
+  el('#btn-export')?.addEventListener('click', ()=>{
+    const name = `lp-hq-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+    const blob = new Blob([JSON.stringify(state.overlay,null,2)],{type:"application/json"});
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+    earnChip('exported');
   });
-
-  el('#btn-import')?.addEventListener('click', () => el('#file-import')?.click());
-
-  el('#file-import')?.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  el('#btn-import')?.addEventListener('click', ()=> el('#file-import')?.click());
+  el('#file-import')?.addEventListener('change', (e)=>{
+    const file = e.target.files?.[0]; if(!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(String(reader.result || "{}"));
-        if (!data || typeof data !== "object") throw new Error("Bad file format");
+    reader.onload = ()=>{
+      try{
+        const data = JSON.parse(String(reader.result||"{}"));
+        if(!data || typeof data !== "object") throw new Error("Bad file format");
         state.overlay = { ...emptyOverlay(), ...data };
-        toast("Imported progress.");
-        saveOverlay();
-        render();
-      } catch (err) {
-        toast("Import failed: " + err.message);
-      }
+        toast("Memory retrieved.");
+        saveOverlay(); render();
+      }catch(err){ toast("Import failed: "+err.message); }
     };
     reader.readAsText(file);
   });
-
-  el('#btn-reset')?.addEventListener('click', () => {
-    if (confirm("Reset all local progress? This cannot be undone.")) {
+  el('#btn-reset')?.addEventListener('click', ()=>{
+    if(confirm("Reset all local progress? This cannot be undone.")){
       state.overlay = emptyOverlay();
-      saveOverlay();
-      render();
+      saveOverlay(); render();
       toast("All local data cleared.");
     }
   });
 
-  // settings menu toggle
+  // settings menu
   const settingsMenu = el('.settings');
-  el('#btn-settings')?.addEventListener('click', () => {
+  el('#btn-settings')?.addEventListener('click', ()=>{
     settingsMenu?.classList.toggle('open');
+    el('#btn-settings')?.setAttribute('aria-expanded', settingsMenu?.classList.contains('open') ? 'true' : 'false');
   });
-  document.addEventListener('click', (e) => {
-    if (!settingsMenu) return;
-    if (settingsMenu.contains(e.target)) return;
+  document.addEventListener('click',(e)=>{
+    if(!settingsMenu) return;
+    if(settingsMenu.contains(e.target) || e.target === el('#btn-settings')) return;
     settingsMenu.classList.remove('open');
+    el('#btn-settings')?.setAttribute('aria-expanded','false');
   });
 
-  // theme/contrast toggles
-  el('#set-contrast')?.addEventListener('change', (e) => {
-    state.overlay.settings.contrast = e.target.checked;
-    saveOverlay();
-    render();
+  // toggles
+  el('#set-contrast')?.addEventListener('change', e=>{
+    state.overlay.settings.contrast = !!e.target.checked; saveOverlay(); render();
   });
-  el('#set-theme')?.addEventListener('change', (e) => {
-    state.overlay.settings.theme = e.target.checked ? "light" : "dark";
-    saveOverlay();
-    render();
+  el('#set-theme')?.addEventListener('change', e=>{
+    // turning on day mode switches off console theme
+    if(e.target.checked){
+      state.overlay.settings.theme = "light";
+      const consoleCbx = el('#set-console'); if(consoleCbx) consoleCbx.checked = false;
+    }else{
+      if(state.overlay.settings.theme === "light") state.overlay.settings.theme = "dark";
+    }
+    saveOverlay(); render();
+  });
+  el('#set-console')?.addEventListener('change', e=>{
+    if(e.target.checked){
+      state.overlay.settings.theme = "console";
+      const dayCbx = el('#set-theme'); if(dayCbx) dayCbx.checked = false;
+    }else{
+      if(state.overlay.settings.theme === "console") state.overlay.settings.theme = "dark";
+    }
+    saveOverlay(); render();
+  });
+  el('#set-story')?.addEventListener('change', e=>{
+    state.overlay.settings.storyMode = !!e.target.checked; saveOverlay(); render();
+  });
+  el('#set-sfx')?.addEventListener('change', e=>{
+    state.overlay.settings.sfx = !!e.target.checked; saveOverlay(); render();
+  });
+  el('#set-haptics')?.addEventListener('change', e=>{
+    state.overlay.settings.haptics = !!e.target.checked; saveOverlay(); render();
   });
 
-  // keyboard shortcuts (when not typing in an input/textarea)
-  document.addEventListener('keydown', (e) => {
-    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+  // terminal (command palette)
+  el('#btn-terminal')?.addEventListener('click', openTerminal);
+  el('#terminal-close')?.addEventListener('click', closeTerminal);
+  document.addEventListener('keydown', (e)=>{
+    // Ignore when typing
+    if(e.target && /input|textarea/i.test(e.target.tagName)) return;
     const key = e.key.toLowerCase();
-    if (key === 'e') el('#btn-edit')?.click();
-    if (key === 'l') el('#btn-jack')?.click();
-    if (/[0-9]/.test(key)) {
-      const idx = (key === '0') ? 9 : (parseInt(key, 10) - 1);
-      if (idx >= 0 && idx < DAYS.length) {
-        state.overlay.day = DAYS[idx];
-        state.overlay.view = "days";
-        saveOverlay();
-        render();
+    // shortcuts
+    if((e.ctrlKey || e.metaKey) && key === 'k'){ e.preventDefault(); openTerminal(); earnChip('keys'); return; }
+    if(key === 'e'){ el('#btn-edit')?.click(); earnChip('keys'); }
+    if(key === 'l'){ el('#btn-jack')?.click(); earnChip('keys'); }
+    if(/[0-9]/.test(key)){
+      const idx = (key === '0') ? 9 : (parseInt(key,10)-1);
+      if(idx>=0 && idx<DAYS.length){
+        state.overlay.day = DAYS[idx]; state.overlay.view = "days";
+        saveOverlay(); render(); earnChip('keys');
       }
     }
+    if(key==='escape' && !el('#terminal-overlay')?.classList.contains('hidden')) closeTerminal();
   });
 }
 
-function wireDynamic() {
-  // welcome buttons
-  els('[data-action="start-mission"]').forEach(btn => btn.addEventListener('click', () => {
+/* ---------------------------
+   Dynamic wiring after render
+---------------------------- */
+function wireDynamic(){
+  // welcome pills
+  els('[data-action="start-mission"]').forEach(btn=>btn.addEventListener('click', ()=>{
     state.overlay.hasSeenWelcome = true;
-    state.overlay.view = "days";
-    state.overlay.day = "D1";
-    saveOverlay();
-    render();
+    state.overlay.view = "days"; state.overlay.day = "D1";
+    saveOverlay(); render();
   }));
-  els('[data-action="see-plan"]').forEach(btn => btn.addEventListener('click', () => {
-    state.overlay.hasSeenWelcome = true;
-    saveOverlay();
-    window.scrollTo({ top: document.body.scrollHeight * 0.35, behavior: 'smooth' });
+  els('[data-action="see-plan"]').forEach(btn=>btn.addEventListener('click', ()=>{
+    state.overlay.hasSeenWelcome = true; saveOverlay();
+    window.scrollTo({ top: document.body.scrollHeight * 0.35, behavior:'smooth' });
   }));
 
   // open day from timeline
-  els('[data-action="open-day"]').forEach(btn => btn.addEventListener('click', () => {
-    const d = btn.dataset.day;
-    state.overlay.day = d;
-    state.overlay.view = "days";
-    saveOverlay();
-    render();
+  els('[data-action="open-day"]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const d = btn.dataset.day; state.overlay.day=d; state.overlay.view="days";
+    saveOverlay(); render();
   }));
 
-  // day tab navigation (within Days view)
-  els('[data-daytab]').forEach(btn => btn.addEventListener('click', () => {
-    state.overlay.day = btn.dataset.daytab;
-    saveOverlay();
-    render();
+  // day tabs
+  els('[data-daytab]').forEach(btn=>btn.addEventListener('click', ()=>{
+    state.overlay.day = btn.dataset.daytab; saveOverlay(); render();
   }));
 
-  // copy prompt buttons
-  els('[data-copy]').forEach(btn => btn.addEventListener('click', () => {
-    const targetSel = btn.getAttribute('data-copy');
-    const node = el(targetSel);
-    if (!node) return;
-    const text = node.textContent || "";
-    navigator.clipboard.writeText(text).then(() => {
-      toast("Copied to clipboard");
-    }).catch(() => {
-      toast("Copy failed");
+  // construct hub nodes
+  els('.construct .node').forEach(node=>{
+    node.addEventListener('click', ()=>{
+      const d = node.getAttribute('data-day'); if(!d) return;
+      state.overlay.day = d; state.overlay.view = "days";
+      saveOverlay(); render();
     });
+  });
+
+  // copy packets
+  els('[data-copy]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const sel = btn.getAttribute('data-copy'); const node = sel && el(sel);
+    if(!node) return;
+    const text = node.textContent || "";
+    navigator.clipboard.writeText(text).then(()=>{
+      const msg = btn.getAttribute('data-copy-label') || "Copied to clipboard";
+      toast(msg); playSfx('copy'); earnChip('copied');
+    }).catch(()=> toast("Copy failed"));
   }));
 
-  // task checkbox toggles
-  els('input[data-task]').forEach(input => input.addEventListener('change', () => {
+  // checklist changes (also detect first 100% per-day to award chip/haptics)
+  els('input[data-task]').forEach(input=>input.addEventListener('change', ()=>{
     const taskId = input.getAttribute('data-task');
-    const itemIndex = parseInt(input.getAttribute('data-item'), 10);
-    const task = state.overlay.tasks.find(t => t.id === taskId);
-    if (task) {
-      task.checklist[itemIndex].done = input.checked;
+    const itemIdx = parseInt(input.getAttribute('data-item'),10);
+    const task = state.overlay.tasks.find(t=>t.id===taskId);
+    if(task && task.checklist[itemIdx]){
+      task.checklist[itemIdx].done = !!input.checked;
     }
-    // recalc overall readiness percentage
-    let total = 0, done = 0;
-    for (const t of state.overlay.tasks) {
-      for (const item of t.checklist) {
-        total++;
-        if (item.done) done++;
+    // update overall
+    state.overlay.readinessPct = percentOverall();
+    // detect per-day 100% for chip/haptics
+    const d = task?.day;
+    if(d){
+      const before = parseInt((input.dataset.prevPct||"-1"),10);
+      const nowPct = percentForDay(d);
+      if(before >= 0 && before < 100 && nowPct === 100){
+        earnChip(`day-${d}`);
+        playSfx('complete');
+        if(state.overlay.settings.haptics) try{ navigator.vibrate?.(25); }catch{}
       }
+      input.dataset.prevPct = String(nowPct);
     }
-    state.overlay.readinessPct = total ? (done / total) * 100 : 0;
-    saveOverlay();
-    render();
+    saveOverlay(); render(); // re-render for updated rings/tabs
   }));
 }
 
-/* ---------- Helpers ---------- */
+/* ---------------------------
+   Visual updates & HUD
+---------------------------- */
+function paintConstruct(){
+  // set ring percentages on nodes (style is already set in markup once)
+  const core = el('.core-ring');
+  if(core) core.style.setProperty('--pct', String(Math.round(clamp(percentOverall(),0,100))));
+  els('.construct .node').forEach(node=>{
+    const d = node.getAttribute('data-day'); if(!d) return;
+    node.style.setProperty('--pct', String(percentForDay(d)));
+  });
+}
 
-function updateLastSaved() {
-  const text = state.overlay.lastSaved ? `Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}` : "";
+function updateOperator(){
+  const hud = el('#operator'); if(!hud) return;
+  const s = currentStreak();
+  const risk = traceRiskLabel();
+  hud.textContent = `Operator: link secure • local save OK • streak ${s} • ${risk}`;
+}
+
+function updateLastSaved(){
   const label = el('#last-saved');
-  if (label) label.textContent = text;
-}
-function clamp(n, a, b) {
-  return Math.max(a, Math.min(b, n));
-}
-function escapeHtml(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-function toast(msg) {
-  const container = el('#toasts');
-  if (!container) return;
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  container.appendChild(t);
-  setTimeout(() => {
-    t.style.opacity = '0';
-    setTimeout(() => t.remove(), 300);
-  }, 1500);
+  if(label){
+    label.textContent = state.overlay.lastSaved
+      ? `Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}`
+      : "";
+  }
 }
 
-/* ---------- Init ---------- */
-document.addEventListener('DOMContentLoaded', () => {
+/* ---------------------------
+   Terminal (command palette)
+---------------------------- */
+function openTerminal(){
+  const term = el('#terminal-overlay'); if(!term) return;
+  term.classList.remove('hidden');
+  const body = el('.terminal-body', term); body?.focus();
+}
+function closeTerminal(){
+  const term = el('#terminal-overlay'); if(!term) return;
+  term.classList.add('hidden');
+  el('#btn-terminal')?.focus();
+}
+
+/* ---------------------------
+   Chips / SFX helpers
+---------------------------- */
+function earnChip(key){
+  if(!key) return;
+  if(!state.overlay.chips) state.overlay.chips = {};
+  if(!state.overlay.chips[key]){
+    state.overlay.chips[key] = true;
+    saveOverlay();
+  }
+}
+function playSfx(kind){
+  if(!state.overlay.settings.sfx) return;
+  const id = kind === 'complete' ? '#sfx-complete' : '#sfx-copy';
+  const a = el(id);
+  try{ a?.play()?.catch(()=>{}); }catch{}
+}
+
+/* ---------------------------
+   Misc utils
+---------------------------- */
+function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
+function escapeHtml(s){
+  return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+}
+
+/* ---------------------------
+   Init
+---------------------------- */
+document.addEventListener('DOMContentLoaded', ()=>{
   render();
   wireHeader();
-  saveOverlay(); // set initial lastSaved timestamp
+  saveOverlay(); // set initial lastSaved + HUD
 });
