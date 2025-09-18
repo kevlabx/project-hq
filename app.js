@@ -220,15 +220,74 @@ function emptyOverlay(){
 
 function loadOverlay(){
   try{
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw5 = localStorage.getItem(STORAGE_KEY);
+    const raw4 = localStorage.getItem("LP_HQ_STATE_V4");
+    if(!raw5 && raw4){
+      const old = JSON.parse(raw4);
+      const base = emptyOverlay();
+      // Migrate tasks from old state
+      let tasks = TASKS;
+      if(old.tasks && Array.isArray(old.tasks)){
+        tasks = TASKS.map(baseTask => {
+          const saved = old.tasks.find(t => t.id === baseTask.id);
+          if(!saved) return baseTask;
+          const mergedChecklist = baseTask.checklist.map(item => {
+            const savedItem = saved.checklist.find(i => i.text === item.text);
+            return savedItem ? { ...item, done: !!savedItem.done } : { ...item };
+          });
+          return { ...baseTask, checklist: mergedChecklist };
+        });
+      }
+      const newState = { ...base, ...old,
+        version: OVERLAY_VERSION,
+        tasks,
+        prompts: old.prompts || DEFAULT_PROMPTS,
+        settings: { ...base.settings, ...(old.settings || {}) },
+        chips: old.chips || {},
+        agents: Array.isArray(old.agents) ? old.agents : (Array.isArray(old.bugs) ? old.bugs : [])
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      try{ localStorage.removeItem("LP_HQ_STATE_V4"); }catch(e){}
+      return newState;
+    }
+    const raw = raw5;
     if(!raw) return emptyOverlay();
     const o = JSON.parse(raw);
-    if(o.version !== OVERLAY_VERSION) return emptyOverlay();
+    if(o.version !== OVERLAY_VERSION){
+      if(typeof o.version === "number" && o.version < OVERLAY_VERSION){
+        const base = emptyOverlay();
+        // Migrate older version state
+        let tasks = TASKS;
+        if(o.tasks && Array.isArray(o.tasks)){
+          tasks = TASKS.map(baseTask => {
+            const saved = o.tasks.find(t => t.id === baseTask.id);
+            if(!saved) return baseTask;
+            const mergedChecklist = baseTask.checklist.map(item => {
+              const savedItem = saved.checklist.find(i => i.text === item.text);
+              return savedItem ? { ...item, done: !!savedItem.done } : { ...item };
+            });
+            return { ...baseTask, checklist: mergedChecklist };
+          });
+        }
+        const migrated = { ...base, ...o,
+          version: OVERLAY_VERSION,
+          tasks,
+          prompts: o.prompts || DEFAULT_PROMPTS,
+          settings: { ...base.settings, ...(o.settings || {}) },
+          chips: o.chips || {},
+          agents: Array.isArray(o.agents) ? o.agents : []
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      } else {
+        return emptyOverlay();
+      }
+    }
     const base = emptyOverlay();
     return { ...base, ...o,
       prompts: o.prompts || DEFAULT_PROMPTS,
       tasks: Array.isArray(o.tasks) ? o.tasks : TASKS,
-      settings: { ...base.settings, ...(o.settings||{}) },
+      settings: { ...base.settings, ...(o.settings || {}) },
       chips: o.chips || {},
       agents: Array.isArray(o.agents) ? o.agents : []
     };
@@ -315,6 +374,12 @@ function render(){
   if(cbx.story)    cbx.story.checked    = !!state.overlay.settings.storyMode;
   if(cbx.sfx)      cbx.sfx.checked      = !!state.overlay.settings.sfx;
   if(cbx.haptics)  cbx.haptics.checked  = !!state.overlay.settings.haptics;
+  if(cbx.contrast) cbx.contrast.parentElement.setAttribute('aria-checked', cbx.contrast.checked ? 'true' : 'false');
+  if(cbx.theme)    cbx.theme.parentElement.setAttribute('aria-checked', cbx.theme.checked ? 'true' : 'false');
+  if(cbx.console)  cbx.console.parentElement.setAttribute('aria-checked', cbx.console.checked ? 'true' : 'false');
+  if(cbx.story)    cbx.story.parentElement.setAttribute('aria-checked', cbx.story.checked ? 'true' : 'false');
+  if(cbx.sfx)      cbx.sfx.parentElement.setAttribute('aria-checked', cbx.sfx.checked ? 'true' : 'false');
+  if(cbx.haptics)  cbx.haptics.parentElement.setAttribute('aria-checked', cbx.haptics.checked ? 'true' : 'false');
 
   const v = state.overlay.view;
   const app = el('#app');
@@ -369,7 +434,7 @@ function welcomeMaybe(){
 
 function constructHubSection(){
   const pct = Math.round(clamp(percentOverall(),0,100));
-  const nodes = DAYS.map((d,i)=>`<button class="node" data-day="${d}" style="--angle: ${i*36}deg; --pct: ${percentForDay(d)}" aria-label="Open ${d}"></button>`).join("");
+  const nodes = DAYS.map((d,i)=>`<button class="node" data-day="${d}" style="--angle: ${i*36}deg; --pct: ${percentForDay(d)}" aria-label="Open Day ${d.slice(1)}"></button>`).join("");
   return `
   <section class="panel construct-hub" aria-label="Construct Hub">
     <div class="construct">
@@ -448,7 +513,7 @@ function dayRail(){
     const pct = percentForDay(d);
     itemsHtml += `<div class="day-card">
       <div><strong>Day ${d.slice(1)}</strong><span class="badge muted small" style="margin-left:8px">${pct}%</span></div>
-      <div class="right"><button class="btn" data-action="open-day" data-day="${d}">Open</button></div>
+      <div class="right"><button class="btn" data-action="open-day" data-day="${d}" aria-label="Open Day ${d.slice(1)} (${pct}% complete)">Open</button></div>
     </div>`;
   }
   return `<section class="panel"><div class="h2">10-day mission rail</div><div class="list">${itemsHtml}</div></section>`;
@@ -467,7 +532,7 @@ function daysView(){
 
   const tabs = DAYS.map(x=>{
     const pct = percentForDay(x);
-    return `<button class="pill ${x===d?'active':''}" data-daytab="${x}" data-day="${x}" style="--pct:${pct}%">${x}</button>`;
+    return `<button class="pill ${x===d?'active':''}" data-daytab="${x}" data-day="${x}" style="--pct:${pct}">${x}</button>`;
   }).join("");
 
   let html = `
@@ -662,7 +727,28 @@ function wireHeader(){
       try{
         const data = JSON.parse(String(reader.result||"{}"));
         if(!data || typeof data !== "object") throw new Error("Bad file format");
-        state.overlay = { ...emptyOverlay(), ...data };
+        const base = emptyOverlay();
+        // Merge imported state (handles older version structures)
+        let tasks = base.tasks;
+        if(data.tasks && Array.isArray(data.tasks)){
+          tasks = base.tasks.map(baseTask => {
+            const saved = data.tasks.find(t => t.id === baseTask.id);
+            if(!saved) return baseTask;
+            const mergedChecklist = baseTask.checklist.map(item => {
+              const savedItem = saved.checklist.find(i => i.text === item.text);
+              return savedItem ? { ...item, done: !!savedItem.done } : { ...item };
+            });
+            return { ...baseTask, checklist: mergedChecklist };
+          });
+        }
+        state.overlay = { ...base, ...data,
+          version: OVERLAY_VERSION,
+          tasks,
+          prompts: data.prompts || DEFAULT_PROMPTS,
+          settings: { ...base.settings, ...(data.settings || {}) },
+          chips: data.chips || {},
+          agents: Array.isArray(data.agents) ? data.agents : (Array.isArray(data.bugs) ? data.bugs : [])
+        };
         toast("Memory retrieved.");
         saveOverlay(); render();
       }catch(err){ toast("Import failed: "+(err?.message||"")); }
