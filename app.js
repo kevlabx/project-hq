@@ -20,7 +20,7 @@ const state = {
   view:"dashboard",
   day:"D1",
   edit:false,
-  jack:false,
+  jack:false, // (Lock In) UI label; action key left as 'jack'
   overlay:null
 };
 
@@ -31,8 +31,9 @@ function emptyOverlay(){
     version:OVERLAY_VERSION,
     codename:"",
     settings:{
+      // high-contrast ON by default; rain OFF by default
       motion:true,
-      highContrast:false,
+      highContrast:true,
       sound:false,
       rainMode:"off" // 'off' | 'edge' | 'nav'
     },
@@ -154,7 +155,7 @@ function applyRainMode(){
   const mode = state.overlay.settings.rainMode;
   if(mode==='off'){ cv.classList.add('rain-off'); }
   if(mode==='nav'){ cv.classList.add('rain-nav'); }
-  // edge mode uses default canvas class (full-screen with radial mask)
+  // edge mode uses default canvas class (full-screen with mask defined in CSS)
   resizeRain();
 }
 
@@ -180,20 +181,18 @@ function initRain(){
 
   const step=()=>{
     const mode = state.overlay.settings.rainMode;
-    if(mode==='off' || state.jack){ // pause when Jack In
-      if(rainCtx){
-        rainCtx.clearRect(0,0,cv.width,cv.height);
-      }
+    if(mode==='off' || state.jack){ // pause when Lock In
+      if(rainCtx){ rainCtx.clearRect(0,0,cv.width,cv.height); }
       rainRAF=requestAnimationFrame(step);
       return;
     }
     rainCtx.fillStyle="rgba(0,0,0,0.06)";
     rainCtx.clearRect(0,0,cv.width,cv.height);
-    // very subtle trail
     rainCtx.fillRect(0,0,cv.width,cv.height);
 
+    // much softer to stay out of the way
     rainCtx.fillStyle="#00ff85";
-    rainCtx.globalAlpha = mode==='nav' ? 0.35 : 0.22;
+    rainCtx.globalAlpha = mode==='nav' ? 0.14 : 0.08;
 
     for(let i=0;i<rainCols.length;i++){
       const txt = glyphs[Math.floor(Math.random()*glyphs.length)];
@@ -207,7 +206,7 @@ function initRain(){
   rainRAF=requestAnimationFrame(step);
 }
 
-/* sounds */
+/* sounds (kept off by default; safe to ignore if you remove the toggle) */
 let audioCtx=null;
 function beep(){
   if(!state.overlay.settings.sound) return;
@@ -242,7 +241,7 @@ function missionHero(){
     <div style="display:flex;gap:22px;align-items:center;justify-content:center;flex-wrap:wrap">
       ${ringHtml(p,true,shimmer)}
       <div>
-        <div class="h2">“Take the red pill.”</div>
+        <div class="h2">“Follow the white rabbit.”</div>
         <div class="small muted">Follow the daily prompts. Tick checklists. Ship. Nothing leaves your browser.</div>
         <div class="toolbar" style="margin-top:8px">
           <button class="btn" data-action="red-pill">Red Pill — Start Day 1</button>
@@ -320,7 +319,7 @@ function operatorLine(day){
     D6:"Operator: extraction — export a buildable ZIP.",
     D7:"Operator: Oracle assist — optional copy polish.",
     D8:"Operator: harden the hull — A11y/SEO/Perf.",
-    D9:"Operator: broadcast — landing, docs, demos.",
+    D9:"Operator: broadcast — landing & docs.",
     D10:"Operator: exit the Matrix — safety & polish."
   };
   return map[day]||"Operator: proceed.";
@@ -414,12 +413,15 @@ function render(){
     const cols = Object.entries(groups).map(([k,items])=>`
       <div class="column">
         <div class="h2">${k} <span class="tag">${items.length}</span></div>
-        ${items.map(t=>`
-          <div class="card">
-            <h4>${esc(t.id)} · ${esc(t.title)}</h4>
-            <div class="small muted">${esc(t.day)} · ${esc(t.priority)} · ${esc(String(t.percent||0))}%</div>
-            <div class="note small">Guidance only. Track real progress in Days.</div>
-          </div>`).join('')}
+        ${items.map(t=>{
+          const dPct = Math.round(dayPct(t.day||""));
+          return `
+            <div class="card">
+              <h4>${esc(t.id)} · ${esc(t.title)}</h4>
+              <div class="small muted">${esc(t.day)} · ${esc(t.priority)} · Day progress: ${dPct}%</div>
+              <div class="note small">Guidance only. Track real progress in Days.</div>
+            </div>`;
+        }).join('')}
       </div>`).join('');
     el('#app').innerHTML = `<section class="panel"><div class="h2">Kanban (reference)</div><div class="board">${cols}</div></section>`;
   }
@@ -509,11 +511,6 @@ npx serve .`;
     el('#app').innerHTML = `
       <section class="panel">
         <div class="h2">Commands</div>
-        <div class="toolbar">
-          <button class="btn" data-os="win">Windows</button>
-          <button class="btn" data-os="mac">macOS</button>
-          <button class="btn" data-os="lin">Linux</button>
-        </div>
         <div class="grid cols-3">
           <div class="panel"><h4>Windows</h4><div class="code">${esc(win)}</div></div>
           <div class="panel"><h4>macOS</h4><div class="code">${esc(mac)}</div></div>
@@ -631,11 +628,13 @@ function wireHeader(){
   document.addEventListener('click', e=>{ if(!e.target.closest('.menu')) el('.menu.settings')?.classList.remove('open'); });
 
   const S=state.overlay.settings;
+  // Handlers are optional-safe (UI may or may not have these)
   el('#set-motion')?.addEventListener('change', e=>{ S.motion = !e.target.checked; saveOverlay(); });
   el('#set-contrast')?.addEventListener('change', e=>{ S.highContrast = e.target.checked; saveOverlay(); render(); });
   el('#set-sound')?.addEventListener('change', e=>{ S.sound = e.target.checked; saveOverlay(); });
   el('#set-rain-mode')?.addEventListener('change', e=>{ S.rainMode = e.target.value; saveOverlay(); applyRainMode(); });
-  // initialize panel inputs
+
+  // initialize panel inputs if present
   const init = ()=>{
     const S=state.overlay.settings;
     const rm = el('#set-rain-mode'); if(rm) rm.value = S.rainMode || "off";
@@ -645,6 +644,7 @@ function wireHeader(){
   };
   setTimeout(init,0);
 
+  // Label shows Lock In even though the action key stays 'jack'
   el('#btn-jack')?.addEventListener('click', ()=>{
     state.jack=!state.jack;
     document.body.classList.toggle('jackin', state.jack);
@@ -693,7 +693,7 @@ function wireApp(){
       openModal(html); return;
     }
 
-    if(t.matches('[data-action="eg-save"]')){
+    if(t.matches('[data-action="eg-save"]]')){
       if(!state.edit) return;
       const eg=state.overlay.endgame;
       eg.repoUrl = el('#eg-repo')?.value.trim()||"";
@@ -812,9 +812,9 @@ function focusPomodoro(){
   return `
   <section class="grid cols-3">
     <div class="panel">
-      <div class="h2">Jack In (Focus)</div>
+      <div class="h2">Lock In (Focus)</div>
       <div class="small muted">Hide distractions. Work the plan.</div>
-      <div class="toolbar"><button class="btn" data-action="jack">${state.jack? "Exit Jack In" : "Enter Jack In"}</button></div>
+      <div class="toolbar"><button class="btn" data-action="jack">${state.jack? "Exit Lock In" : "Enter Lock In"}</button></div>
     </div>
     <div class="panel">
       <div class="h2">Focus Timer</div>
