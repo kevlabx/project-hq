@@ -3,18 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
   <title>LoomPages Project HQ — 10-Day Challenge</title>
   <meta name="description" content="10-day guided web project. Local-only progress. Follow the white rabbit." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="story-on">
-  <header class="site-header">
+  <noscript>
+    <div style="padding:12px;border:1px solid #c00;background:#300;color:#fff;margin:12px;border-radius:8px;">
+      This app needs JavaScript enabled.
+    </div>
+  </noscript>
+
+  <header class="site-header" role="banner">
     <div class="brand">
-      <div class="logo">LP</div>
+      <div class="logo" aria-hidden="true">LP</div>
       <div class="title">LoomPages Project HQ</div>
-      <div class="subtitle small muted">Ship LoomPages in 10 days • All progress stays on your device • Designed by Kevin</div>
+      <div class="subtitle small muted">
+        Ship LoomPages in 10 days • All progress stays on your device • Designed by Kevin
+      </div>
     </div>
 
+    <!-- Primary nav (wired by app.js) -->
     <nav class="nav" aria-label="Primary">
       <button class="pill" data-nav="dashboard" aria-label="Overview">Overview</button>
       <button class="pill" data-nav="days" aria-label="Days">Days</button>
@@ -25,6 +35,7 @@
       <button class="pill" id="btn-terminal" aria-haspopup="dialog" aria-controls="terminal-overlay" aria-label="Open Operator Terminal">Terminal</button>
     </nav>
 
+    <!-- Right-side actions -->
     <div class="actions">
       <button id="btn-edit" class="pill" aria-pressed="false">Edit: Off</button>
       <button id="btn-jack" class="pill" aria-pressed="false" data-label-off="Jack In" data-label-on="Unjack">Jack In</button>
@@ -32,12 +43,15 @@
       <div class="menu">
         <button id="btn-export" class="pill" aria-label="Construct Upload (Export)">Construct Upload</button>
       </div>
+
       <div class="menu">
         <button id="btn-import" class="pill" aria-label="Memory Retrieve (Import)">Memory Retrieve</button>
         <input id="file-import" type="file" accept="application/json" hidden />
       </div>
+
       <button id="btn-reset" class="pill danger" aria-label="Reset all data">Reset</button>
 
+      <!-- Settings popover -->
       <div class="menu settings">
         <button id="btn-settings" class="pill" aria-expanded="false" aria-controls="settings-panel">Settings</button>
         <div id="settings-panel" class="menu-panel" role="menu">
@@ -69,69 +83,26 @@
       </div>
     </div>
 
-    <!-- Operator status (Matrix diegetic HUD) -->
+    <!-- Operator status (updated by app.js) -->
     <div id="operator" class="operator" aria-live="polite">
       Operator: link secure • local save OK • streak 0 • trace risk low
     </div>
   </header>
 
-  <main id="app" class="site-main">
-    <!-- Construct Hub (radial). JS will populate nodes and percent with data attributes. -->
-    <section class="panel construct-hub" data-view="dashboard-only" aria-label="Construct Hub">
-      <div class="construct">
-        <div class="core-ring" role="img" aria-label="Overall completion" style="--pct: 0"></div>
-        <div class="orbit">
-          <!-- JS will render 10 nodes; leaving semantic anchor for SSR fallback -->
-          <button class="node" data-day="D1" style="--angle: 0deg; --pct: 0" aria-label="Open Day 1"></button>
-          <button class="node" data-day="D2" style="--angle: 36deg; --pct: 0" aria-label="Open Day 2"></button>
-          <button class="node" data-day="D3" style="--angle: 72deg; --pct: 0" aria-label="Open Day 3"></button>
-          <button class="node" data-day="D4" style="--angle: 108deg; --pct: 0" aria-label="Open Day 4"></button>
-          <button class="node" data-day="D5" style="--angle: 144deg; --pct: 0" aria-label="Open Day 5"></button>
-          <button class="node" data-day="D6" style="--angle: 180deg; --pct: 0" aria-label="Open Day 6"></button>
-          <button class="node" data-day="D7" style="--angle: 216deg; --pct: 0" aria-label="Open Day 7"></button>
-          <button class="node" data-day="D8" style="--angle: 252deg; --pct: 0" aria-label="Open Day 8"></button>
-          <button class="node" data-day="D9" style="--angle: 288deg; --pct: 0" aria-label="Open Day 9"></button>
-          <button class="node" data-day="D10" style="--angle: 324deg; --pct: 0" aria-label="Open Day 10"></button>
-        </div>
-      </div>
-      <div class="construct-legend small">
-        <span class="chip">Overall</span>
-        <span class="chip">D1–D10 nodes</span>
-        <span class="chip ok">Skill chips</span>
-      </div>
-    </section>
-
-    <!-- Mission intel cards (today objective / risks / next) -->
-    <section class="panel intel" data-view="dashboard-only">
-      <div class="grid cols-3">
-        <div class="card intel-card">
-          <div class="label">TODAY</div>
-          <div class="intel-body" id="intel-today">Objective loads here.</div>
-        </div>
-        <div class="card intel-card">
-          <div class="label">RISKS</div>
-          <div class="intel-body" id="intel-risks">Top risks load here.</div>
-        </div>
-        <div class="card intel-card">
-          <div class="label">NEXT</div>
-          <div class="intel-body" id="intel-next">Next steps load here.</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Normal app render target -->
-    <div class="panel">Loading…</div>
+  <!-- Main render target; app.js injects all views here -->
+  <main id="app" class="site-main" role="main">
+    <section class="panel">Loading…</section>
   </main>
 
-  <footer class="site-footer">
+  <footer class="site-footer" role="contentinfo">
     <div>Tip: Export your progress JSON regularly as a backup.</div>
     <div id="last-saved" class="muted small"></div>
   </footer>
 
-  <!-- Toasts -->
+  <!-- Toast host (used by toast() in app.js) -->
   <div id="toasts" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Operator Terminal (Command Palette) -->
+  <!-- Operator Terminal (command palette) -->
   <div id="terminal-overlay" class="terminal hidden" role="dialog" aria-modal="true" aria-labelledby="terminal-title">
     <div class="terminal-box" role="document">
       <div class="terminal-header">
@@ -139,8 +110,8 @@
         <button class="pill" id="terminal-close" aria-label="Close terminal">Esc</button>
       </div>
       <div class="terminal-body" tabindex="0">
-        <pre class="crt">
-> help
+        <pre class="crt" aria-label="Terminal help">
+&gt; help
   • go d1..d10   – open day
   • view plan    – scroll to mission rail
   • jack in      – focus mode on/off
@@ -155,7 +126,7 @@
     </div>
   </div>
 
-  <!-- SFX (opt-in via Settings) -->
+  <!-- Optional SFX (app.js is defensive if sources are empty) -->
   <audio id="sfx-copy" preload="auto">
     <source src="" type="audio/mpeg" />
   </audio>
@@ -163,7 +134,7 @@
     <source src="" type="audio/mpeg" />
   </audio>
 
-  <!-- Modal root for future panels -->
+  <!-- Modal root for future overlays -->
   <div id="modal-root"></div>
 
   <script src="app.js"></script>

@@ -1,7 +1,7 @@
 // app.js
 /* LoomPages Project HQ — Matrix "Game Mode"
    Local-only SPA: state in localStorage; no external deps.
-   Implements 20 Matrix-mode UX upgrades (pills, construct hub, console theme, story beats, chips, etc.).
+   Implements Matrix-mode UX upgrades (pills, construct hub, console theme, story beats, chips, etc.).
 */
 
 /* ---------------------------
@@ -286,7 +286,7 @@ function render(){
   document.body.classList.toggle('jackin', !!state.overlay.locked);
   document.body.classList.toggle('story-on', !!state.overlay.settings.storyMode);
 
-  // header nav active
+  // header nav active state
   els('.nav .pill').forEach(btn => btn.classList.toggle('active', btn.dataset.nav === state.overlay.view));
   const editBtn = el('#btn-edit');
   if(editBtn){
@@ -300,7 +300,7 @@ function render(){
     jackBtn.setAttribute('aria-pressed', String(!!state.overlay.locked));
   }
 
-  // sync settings controls
+  // sync settings toggles
   const cbx = {
     contrast: el('#set-contrast'),
     theme: el('#set-theme'),
@@ -327,7 +327,7 @@ function render(){
     html += intelCards();
     html += newPanelWhatYouBuild();
     html += newPanelHowItWorks();
-    html += dayRail(); // list rail as well (redundant but helpful)
+    html += dayRail();
   } else if(v === "days"){
     html += daysView();
   } else if(v === "prompts"){
@@ -369,7 +369,6 @@ function welcomeMaybe(){
 
 function constructHubSection(){
   const pct = Math.round(clamp(percentOverall(),0,100));
-  // orbit nodes rendered by paintConstruct, here provide shell markup
   const nodes = DAYS.map((d,i)=>`<button class="node" data-day="${d}" style="--angle: ${i*36}deg; --pct: ${percentForDay(d)}" aria-label="Open ${d}"></button>`).join("");
   return `
   <section class="panel construct-hub" aria-label="Construct Hub">
@@ -404,13 +403,42 @@ function firstTwoLines(s){
   return String(s).split(/\n/).slice(0,2).join(" ").trim() || "—";
 }
 function topRisksFromEnd(s){
-  // naive: pick lines with 'risk' or return short hint
   const lines = String(s).split(/\n/).filter(x=>/risk/i.test(x)).slice(0,2);
   return lines.join(" ").trim() || "Keep scope small. Deploy daily.";
 }
 function nextStepsFromStart(s){
   const lines = String(s).split(/\n/).filter(x=>/goal|task|plan|steps|implement|create/i.test(x)).slice(0,1);
   return lines.join(" ").trim() || "Copy Start prompt, ship one commit.";
+}
+
+/* Dashboard: intro panels */
+function newPanelWhatYouBuild(){
+  return `
+  <section class="panel">
+    <div class="h2">What you’ll build</div>
+    <div class="grid cols-2">
+      <div class="card">
+        <strong>10-day guided landing page generator</strong>
+        <p class="small muted">Tokens → Sections → Editor → Export → Deploy. No servers, progress stored locally.</p>
+      </div>
+      <div class="card">
+        <strong>Matrix “Game Mode” UI</strong>
+        <p class="small muted">Orbit hub, story beats, skill chips, console theme, keyboard shortcuts.</p>
+      </div>
+    </div>
+  </section>`;
+}
+function newPanelHowItWorks(){
+  return `
+  <section class="panel">
+    <div class="h2">How it works</div>
+    <div class="list">
+      <div>• Use the <strong>Days</strong> view to follow daily prompts and check off tasks.</div>
+      <div>• <strong>Prompts</strong> provides copy-ready start/end packets for each day.</div>
+      <div>• <strong>Cheat Sheet</strong> & <strong>Commands</strong> give quick refs.</div>
+      <div>• Click any node in the hub or press 1–0 keys to jump to a day.</div>
+    </div>
+  </section>`;
 }
 
 /* ----- Other views ----- */
@@ -430,16 +458,13 @@ function daysView(){
   const d = state.overlay.day;
   const prom = state.overlay.prompts[d] || { start:"", end:"" };
 
-  // White Rabbit early runway (D1–D3)
   const earlyDots = [ "D1","D2","D3" ].map(x=>{
     const filled = percentForDay(x) === 100 ? "background:var(--accent-green)" : "background:transparent";
     return `<i style="display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid var(--line);${filled};margin-right:6px"></i>`;
   }).join("");
 
-  // Story beat
   const beat = state.overlay.settings.storyMode ? `<div class="card"><div class="small muted">Story beat</div><div>${escapeHtml(STORY_BEATS[d]||"Stay the course.")}</div></div>` : "";
 
-  // Day pills with ring %
   const tabs = DAYS.map(x=>{
     const pct = percentForDay(x);
     return `<button class="pill ${x===d?'active':''}" data-daytab="${x}" data-day="${x}" style="--pct:${pct}%">${x}</button>`;
@@ -465,7 +490,6 @@ function daysView(){
     <div class="toolbar" aria-label="Day tabs">${tabs}</div>
   </section>`;
 
-  // tasks
   html += `<section class="panel"><div class="h2">Tasks</div>`;
   const tasks = state.overlay.tasks.filter(t => t.day === d);
   for(const task of tasks){
@@ -584,7 +608,7 @@ pnpm dlx serve .</div>
 
 function agentsView(){
   const n = state.overlay.agents.length;
-  const list = n ? state.overlay.agents.map((a,i)=>`<li>${escapeHtml(a)}</li>`).join("") : `<li class="muted">No agents currently detected.</li>`;
+  const list = n ? state.overlay.agents.map((a)=>`<li>${escapeHtml(a)}</li>`).join("") : `<li class="muted">No agents currently detected.</li>`;
   return `<section class="panel"><div class="h2">Agents</div><ul>${list}</ul></section>`;
 }
 
@@ -628,6 +652,7 @@ function wireHeader(){
     a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
     earnChip('exported');
+    toast("Progress exported.");
   });
   el('#btn-import')?.addEventListener('click', ()=> el('#file-import')?.click());
   el('#file-import')?.addEventListener('change', (e)=>{
@@ -640,7 +665,7 @@ function wireHeader(){
         state.overlay = { ...emptyOverlay(), ...data };
         toast("Memory retrieved.");
         saveOverlay(); render();
-      }catch(err){ toast("Import failed: "+err.message); }
+      }catch(err){ toast("Import failed: "+(err?.message||"")); }
     };
     reader.readAsText(file);
   });
@@ -670,7 +695,6 @@ function wireHeader(){
     state.overlay.settings.contrast = !!e.target.checked; saveOverlay(); render();
   });
   el('#set-theme')?.addEventListener('change', e=>{
-    // turning on day mode switches off console theme
     if(e.target.checked){
       state.overlay.settings.theme = "light";
       const consoleCbx = el('#set-console'); if(consoleCbx) consoleCbx.checked = false;
@@ -702,7 +726,7 @@ function wireHeader(){
   el('#btn-terminal')?.addEventListener('click', openTerminal);
   el('#terminal-close')?.addEventListener('click', closeTerminal);
   document.addEventListener('keydown', (e)=>{
-    // Ignore when typing
+    // Ignore when typing in fields
     if(e.target && /input|textarea/i.test(e.target.tagName)) return;
     const key = e.key.toLowerCase();
     // shortcuts
@@ -735,7 +759,7 @@ function wireDynamic(){
     window.scrollTo({ top: document.body.scrollHeight * 0.35, behavior:'smooth' });
   }));
 
-  // open day from timeline
+  // open day from rail
   els('[data-action="open-day"]').forEach(btn=>btn.addEventListener('click', ()=>{
     const d = btn.dataset.day; state.overlay.day=d; state.overlay.view="days";
     saveOverlay(); render();
@@ -756,17 +780,27 @@ function wireDynamic(){
   });
 
   // copy packets
-  els('[data-copy]').forEach(btn=>btn.addEventListener('click', ()=>{
+  els('[data-copy]').forEach(btn=>btn.addEventListener('click', async ()=>{
     const sel = btn.getAttribute('data-copy'); const node = sel && el(sel);
     if(!node) return;
     const text = node.textContent || "";
-    navigator.clipboard.writeText(text).then(()=>{
+    try{
+      if(navigator.clipboard?.writeText){
+        await navigator.clipboard.writeText(text);
+      }else{
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      }
       const msg = btn.getAttribute('data-copy-label') || "Copied to clipboard";
       toast(msg); playSfx('copy'); earnChip('copied');
-    }).catch(()=> toast("Copy failed"));
+    }catch{
+      toast("Copy failed");
+    }
   }));
 
-  // checklist changes (also detect first 100% per-day to award chip/haptics)
+  // checklist changes (detect 100% per-day to award chip/haptics)
   els('input[data-task]').forEach(input=>input.addEventListener('change', ()=>{
     const taskId = input.getAttribute('data-task');
     const itemIdx = parseInt(input.getAttribute('data-item'),10);
@@ -774,9 +808,7 @@ function wireDynamic(){
     if(task && task.checklist[itemIdx]){
       task.checklist[itemIdx].done = !!input.checked;
     }
-    // update overall
     state.overlay.readinessPct = percentOverall();
-    // detect per-day 100% for chip/haptics
     const d = task?.day;
     if(d){
       const before = parseInt((input.dataset.prevPct||"-1"),10);
@@ -788,7 +820,7 @@ function wireDynamic(){
       }
       input.dataset.prevPct = String(nowPct);
     }
-    saveOverlay(); render(); // re-render for updated rings/tabs
+    saveOverlay(); render();
   }));
 }
 
@@ -796,7 +828,6 @@ function wireDynamic(){
    Visual updates & HUD
 ---------------------------- */
 function paintConstruct(){
-  // set ring percentages on nodes (style is already set in markup once)
   const core = el('.core-ring');
   if(core) core.style.setProperty('--pct', String(Math.round(clamp(percentOverall(),0,100))));
   els('.construct .node').forEach(node=>{
@@ -854,11 +885,26 @@ function playSfx(kind){
 }
 
 /* ---------------------------
+   Toasts
+---------------------------- */
+function toast(message, ms=2200){
+  const host = el('#toasts'); if(!host) return;
+  const box = document.createElement('div');
+  box.className = 'toast';
+  box.setAttribute('role','status');
+  box.textContent = message;
+  host.appendChild(box);
+  setTimeout(()=>{ box.style.opacity = '0'; }, ms);
+  setTimeout(()=>{ box.remove(); }, ms + 300);
+}
+
+/* ---------------------------
    Misc utils
 ---------------------------- */
 function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
 function escapeHtml(s){
-  return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+  const map = {'&':'&amp;','<':'&lt;','>':'&gt;'};
+  return String(s).replace(/[&<>]/g, ch => map[ch]);
 }
 
 /* ---------------------------

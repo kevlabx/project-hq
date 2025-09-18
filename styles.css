@@ -21,20 +21,44 @@
   --focus:#93ffe0;
   --shadow:0 6px 24px rgba(0,0,0,.25),0 2px 8px rgba(0,0,0,.15);
 }
+
 html[data-contrast="normal"]{
-  --muted:#9bb7aa; --line:#183027;
+  --muted:#9bb7aa;
+  --line:#183027;
 }
+
 html[data-theme="light"]{
-  --bg:#f7faf8; --panel:#fff; --panel-2:#f4f8f6;
-  --text:#102219; --muted:#4a6a5c; --line:#dfe7e3; --ring:#0a8f55;
-  --accent-green:#0a8f55; --accent-amber:#b4771d; --accent-crimson:#a94444; --accent-cyan:#2b7e96;
+  --bg:#f7faf8;
+  --panel:#ffffff;
+  --panel-2:#f4f8f6;
+  --text:#102219;
+  --muted:#4a6a5c;
+  --line:#dfe7e3;
+  --ring:#0a8f55;
+
+  --accent-green:#0a8f55;
+  --accent-amber:#b4771d;
+  --accent-crimson:#a94444;
+  --accent-cyan:#2b7e96;
+
   --grad-green: linear-gradient(90deg,#0a8f55,#2b7e96);
   --shadow:0 6px 24px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.06);
 }
+
 html[data-theme="console"]{
-  --bg:#040404; --panel:#060606; --panel-2:#050505;
-  --text:#c0ffd6; --muted:#78b697; --line:#0f2b1e; --ring:#15ff9a;
-  --accent-green:#15ff9a; --accent-amber:#caa84a; --accent-crimson:#ff6e6e; --accent-cyan:#5cd7ff;
+  --bg:#040404;
+  --panel:#060606;
+  --panel-2:#050505;
+  --text:#c0ffd6;
+  --muted:#78b697;
+  --line:#0f2b1e;
+  --ring:#15ff9a;
+
+  --accent-green:#15ff9a;
+  --accent-amber:#caa84a;
+  --accent-crimson:#ff6e6e;
+  --accent-cyan:#5cd7ff;
+
   --grad-green: linear-gradient(90deg,#15ff9a,#5cd7ff);
   --shadow:0 0 0 rgba(0,0,0,0);
 }
@@ -45,24 +69,36 @@ html[data-theme="console"]{
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
-  margin:0; background:var(--bg); color:var(--text);
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
   font:14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
 }
+a{color:inherit}
+
 .small{font-size:14px}
 .muted{color:var(--muted)}
+.h2{font-size:18px;font-weight:800;margin:0 0 8px}
 
 /* ============================
    HEADER / NAV
    ============================ */
 .site-header{
-  max-width:1240px; margin:18px auto 12px; padding:0 18px;
-  display:grid; grid-template-columns:auto 1fr; grid-template-areas:"brand actions" "nav nav";
-  align-items:center; gap:10px;
+  max-width:1240px;
+  margin:18px auto 12px;
+  padding:0 18px;
+  display:grid;
+  grid-template-columns:auto 1fr;
+  grid-template-areas:
+    "brand actions"
+    "nav nav";
+  align-items:center;
+  gap:10px;
 }
-.site-header .brand{grid-area:brand}
-.site-header .nav{grid-area:nav; display:flex; flex-wrap:wrap; gap:8px; justify-content:center}
-.site-header .actions{grid-area:actions; display:flex; flex-wrap:wrap; gap:8px}
 
+.site-header .brand{grid-area:brand}
 .brand .logo{
   display:inline-flex; width:28px; height:28px; border-radius:50%;
   background:#072116; color:#afffdd; align-items:center; justify-content:center;
@@ -71,18 +107,36 @@ body{
 .brand .title{font-size:18px; font-weight:800; display:inline-block; margin-right:8px}
 .brand .subtitle{margin-top:4px}
 
+.site-header .nav{
+  grid-area:nav;
+  display:flex; flex-wrap:wrap; gap:8px; justify-content:center;
+}
+.site-header .actions{
+  grid-area:actions;
+  display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end;
+}
+
 .actions .menu{position:relative}
 .menu-panel{
-  display:none; position:absolute; top:36px; right:0; background:var(--panel); border:1px solid var(--line);
-  border-radius:var(--radius); padding:10px; box-shadow:var(--shadow); min-width:220px; z-index:20;
+  display:none;
+  position:absolute; top:36px; right:0;
+  background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--radius); padding:10px;
+  box-shadow:var(--shadow); min-width:220px; z-index:20;
 }
 .menu.open .menu-panel{display:block}
 .menu .row{display:flex; align-items:center; gap:8px; padding:6px 2px}
 
 /* Operator HUD */
 .operator{
-  grid-column:1 / -1; margin-top:6px; color:var(--muted); font-size:13px;
-  padding:6px 10px; border:1px dashed var(--line); border-radius:12px; background:var(--panel-2);
+  grid-column:1 / -1;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:13px;
+  padding:6px 10px;
+  border:1px dashed var(--line);
+  border-radius:12px;
+  background:var(--panel-2);
 }
 
 /* ============================
@@ -91,6 +145,7 @@ body{
 .pill{
   background:transparent; border:1px solid var(--line); color:var(--text);
   padding:6px 10px; border-radius:999px; cursor:pointer; font:inherit;
+  transition:border-color .15s, background-color .15s;
 }
 .pill:hover{border-color:var(--accent-cyan)}
 .pill.active{background:rgba(70,219,255,.08); border-color:var(--accent-cyan)}
@@ -100,10 +155,8 @@ body{
 .pill.red{background:linear-gradient(0deg,rgba(255,0,0,.12),transparent); border-color:#ff6868}
 .pill.blue{background:linear-gradient(0deg,rgba(0,128,255,.12),transparent); border-color:#6fb9ff}
 
-/* Circuit day pills (ring percent) */
-.pill[data-day]{
-  position:relative; padding-left:26px; padding-right:10px;
-}
+/* Circuit day pills (show % ring) */
+.pill[data-day]{position:relative; padding-left:26px; padding-right:10px}
 .pill[data-day]::before{
   content:""; position:absolute; left:8px; top:50%; transform:translateY(-50%);
   width:12px; height:12px; border-radius:50%; border:1px solid var(--line);
@@ -115,6 +168,7 @@ body{
 .btn{
   background:transparent; border:1px solid var(--line); color:var(--text);
   padding:8px 12px; border-radius:10px; cursor:pointer; font:inherit;
+  transition:border-color .15s, background-color .15s;
 }
 .btn:hover{border-color:var(--accent-green)}
 .btn.primary{background:linear-gradient(0deg,rgba(10,143,85,.12),transparent); border-color:var(--accent-green)}
@@ -129,16 +183,17 @@ body{
   border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); margin-bottom:14px;
 }
 .panel .toolbar{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
+
 .code{
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  white-space: pre-wrap; background:var(--panel-2); border:1px dashed var(--line); border-radius:12px; padding:10px;
+  white-space: pre-wrap; background:var(--panel-2);
+  border:1px dashed var(--line); border-radius:12px; padding:10px;
 }
 
-/* Matrix divider labels */
+/* Matrix divider */
 .panel + .panel::before{
   content:""; display:block; height:10px; margin:10px 0 6px 0;
-  background:
-    repeating-linear-gradient(90deg, rgba(0,255,133,.2) 0 2px, transparent 2px 4px);
+  background: repeating-linear-gradient(90deg, rgba(0,255,133,.2) 0 2px, transparent 2px 4px);
   mask-image: linear-gradient(to bottom, rgba(0,0,0,.7), transparent);
 }
 
@@ -156,6 +211,8 @@ body{
   background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px;
 }
 .badge{padding:2px 8px; border:1px solid var(--line); border-radius:999px}
+
+/* Micro progress bar */
 .tinybar{height:6px; border-radius:6px; background:#0d241c; border:1px solid #16382c; overflow:hidden; margin-top:8px}
 .tinybar>i{display:block; height:100%; background:var(--grad-green); width:0%}
 
@@ -164,7 +221,8 @@ body{
    ============================ */
 .construct-hub{display:block}
 .construct{
-  --size: 260px; position:relative; width:var(--size); height:var(--size); margin:0 auto;
+  --size: 260px;
+  position:relative; width:var(--size); height:var(--size); margin:0 auto;
 }
 .core-ring{
   --pct:0; position:absolute; inset:0; border-radius:50%;
@@ -175,19 +233,18 @@ body{
 }
 .orbit{position:absolute; inset:0}
 .node{
-  position:absolute; left:50%; top:50%; transform:
-    rotate(var(--angle,0deg)) translate(calc(var(--size)/2.6)) rotate(calc(var(--angle,0deg)*-1));
+  position:absolute; left:50%; top:50%;
+  transform: rotate(var(--angle,0deg)) translate(calc(var(--size)/2.6)) rotate(calc(var(--angle,0deg)*-1));
   width:24px; height:24px; border:1px solid var(--line); border-radius:50%; background:var(--panel-2);
   box-shadow: var(--glow); cursor:pointer;
 }
 .node::after{
-  /* ring fill for each node */
   content:""; position:absolute; inset:2px; border-radius:50%;
   background: conic-gradient(var(--accent-green) calc(var(--pct,0)*1%), transparent 0);
 }
 .node:focus{outline:2px solid var(--focus); outline-offset:2px}
 
-/* Construct legend */
+/* Legend chips */
 .construct-legend{display:flex; gap:8px; justify-content:center; margin-top:10px}
 .chip{border:1px solid var(--line); border-radius:999px; padding:2px 8px; font-size:12px}
 .chip.ok{border-color:var(--accent-green); color:var(--accent-green)}
@@ -204,10 +261,12 @@ body{
    PACKETS (Prompts)
    ============================ */
 .packet{
-  border:1px solid var(--line); border-radius:14px; padding:10px; background:linear-gradient(0deg,rgba(0,255,133,.05),transparent);
+  border:1px solid var(--line); border-radius:14px; padding:10px;
+  background:linear-gradient(0deg,rgba(0,255,133,.05),transparent);
 }
 .packet .packet-title{
-  font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; margin-bottom:6px;
+  font-size:12px; color:var(--muted);
+  display:flex; align-items:center; gap:6px; margin-bottom:6px;
 }
 .packet .code{border-style:solid; border-color:#124733}
 
@@ -227,9 +286,10 @@ body.jackin .site-footer{opacity:.25; pointer-events:none}
 body.jackin .site-main{filter:grayscale(.15) brightness(.98)}
 body.jackin #btn-jack{background:#102718; border-color:#1f513e}
 @media (prefers-reduced-motion:no-preference){
-  body.jackin .site-main{background-image:
-    radial-gradient(100px 20px at 10% 20%, rgba(0,255,133,.05), transparent 70%),
-    radial-gradient(120px 22px at 80% 70%, rgba(70,219,255,.05), transparent 70%);
+  body.jackin .site-main{
+    background-image:
+      radial-gradient(100px 20px at 10% 20%, rgba(0,255,133,.05), transparent 70%),
+      radial-gradient(120px 22px at 80% 70%, rgba(70,219,255,.05), transparent 70%);
     background-attachment:fixed;
   }
 }
@@ -251,7 +311,8 @@ body.jackin #btn-jack{background:#102718; border-color:#1f513e}
   position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.5); z-index:3000;
 }
 .terminal-box{
-  width:min(720px,94vw); background:var(--panel); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow)
+  width:min(720px,94vw); background:var(--panel); border:1px solid var(--line);
+  border-radius:16px; box-shadow:var(--shadow)
 }
 .terminal-header{display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid var(--line)}
 .terminal-body{padding:12px; max-height:min(60vh,560px); overflow:auto; background:var(--panel-2)}
@@ -269,5 +330,5 @@ body.jackin #btn-jack{background:#102718; border-color:#1f513e}
 .panel input[type="checkbox"]:focus{outline:2px solid var(--focus)}
 .panel input[type="checkbox"]:checked + span{text-decoration:line-through; opacity:.7}
 
-/* RESPONSIVE: hide construct on non-dashboard unless JS toggles */
+/* Safety: default display for any “dashboard-only” placeholders if present */
 [data-view="dashboard-only"]{display:block}
