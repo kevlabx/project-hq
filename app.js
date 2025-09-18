@@ -72,13 +72,18 @@ function tasksForDay(day) {
   return (state.data.tasks || []).filter(t => t.day === day);
 }
 
-// ---------- GitHub issue links ----------
+// ---------- GitHub config helpers (safe even if CONFIG isn't defined) ----------
+function getCfg() {
+  return (typeof window !== "undefined" && window.CONFIG) ? window.CONFIG : null;
+}
 function hasRepoConfig() {
-  return CONFIG && CONFIG.GITHUB_OWNER && CONFIG.GITHUB_REPO;
+  const c = getCfg();
+  return !!(c && c.GITHUB_OWNER && c.GITHUB_REPO);
 }
 
 function issueURLForTaskUpdate(task) {
-  if (!hasRepoConfig()) return null;
+  const c = getCfg();
+  if (!c) return null;
   const title = encodeURIComponent(`Task Update: ${task.id} ${task.title}`);
   const body = encodeURIComponent(
 `<!-- edit fields below; keep JSON intact -->
@@ -91,11 +96,12 @@ function issueURLForTaskUpdate(task) {
 }
 `);
   const labels = encodeURIComponent("task-update");
-  return `https://github.com/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/issues/new?title=${title}&labels=${labels}&body=${body}`;
+  return `https://github.com/${c.GITHUB_OWNER}/${c.GITHUB_REPO}/issues/new?title=${title}&labels=${labels}&body=${body}`;
 }
 
 function issueURLForBug(task) {
-  if (!hasRepoConfig()) return null;
+  const c = getCfg();
+  if (!c) return null;
   const title = encodeURIComponent(`Bug: ${task ? task.id + " " : ""}describe-problem`);
   const labels = encodeURIComponent("bug");
   const body = encodeURIComponent(
@@ -108,8 +114,9 @@ Actual:
 Linked Task: ${task ? task.id : "N/A"}
 Severity: Sev2
 `);
-  return `https://github.com/${CONFIG.GITHUB_OWNER}/${CONFIG_GITHUB_REPO}/issues/new?title=${title}&labels=${labels}&body=${body}`;
+  return `https://github.com/${c.GITHUB_OWNER}/${c.GITHUB_REPO}/issues/new?title=${title}&labels=${labels}&body=${body}`;
 }
+
 
 // ---------- rendering ----------
 function render() {
