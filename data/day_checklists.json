@@ -3,7 +3,7 @@
     {"id":"D1-C1","title":"Install Node LTS, pnpm, Git","desc":""},
     {"id":"D1-C2","title":"Create Next.js (TS) app","desc":"App Router + strict TS"},
     {"id":"D1-C3","title":"Add Tailwind, shadcn/ui, Zustand, Zod, dnd-kit","desc":""},
-    {"id":"D1-C4","title":"Initial commit to your own GitHub repo","desc":"private or public, your choice"},
+    {"id":"D1-C4","title":"Initial commit to your own GitHub repo","desc":"private or public"},
     {"id":"D1-C5","title":"Deploy skeleton to Vercel","desc":"open live URL"},
     {"id":"D1-C6","title":"Repo hygiene","desc":"ESLint, Prettier, README, LOG.md"}
   ]},
@@ -31,7 +31,7 @@
   { "day":"D6", "items":[
     {"id":"D6-C1","title":"exportProject builds static Next site in memory","desc":"download zip"},
     {"id":"D6-C2","title":"README deploy steps","desc":"verify build on Windows"},
-    {"id":"D6-C3","title":"Optional GitHub export (PAT)","desc":"if you choose to support it"}
+    {"id":"D6-C3","title":"Optional GitHub export (PAT)","desc":"if you choose"}
   ]},
   { "day":"D7", "items":[
     {"id":"D7-C1","title":"Settings modal, key stored locally","desc":"AI off switch"},
