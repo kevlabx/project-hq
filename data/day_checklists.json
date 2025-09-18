@@ -1,0 +1,53 @@
+[
+  { "day":"D1", "items":[
+    {"id":"D1-C1","title":"Install Node LTS, pnpm, Git","desc":""},
+    {"id":"D1-C2","title":"Create Next.js (TS) app","desc":"App Router + strict TS"},
+    {"id":"D1-C3","title":"Add Tailwind, shadcn/ui, Zustand, Zod, dnd-kit","desc":""},
+    {"id":"D1-C4","title":"Initial commit to your own GitHub repo","desc":"private or public, your choice"},
+    {"id":"D1-C5","title":"Deploy skeleton to Vercel","desc":"open live URL"},
+    {"id":"D1-C6","title":"Repo hygiene","desc":"ESLint, Prettier, README, LOG.md"}
+  ]},
+  { "day":"D2", "items":[
+    {"id":"D2-C1","title":"Map tokens to CSS variables","desc":"color, font, spacing, radius"},
+    {"id":"D2-C2","title":"Wire Tailwind to read vars","desc":""},
+    {"id":"D2-C3","title":"Build TokensPanel with 4 presets","desc":"Clean, Friendly, Bold, Minimal"},
+    {"id":"D2-C4","title":"Persist tokens locally","desc":"localStorage or state"}
+  ]},
+  { "day":"D3", "items":[
+    {"id":"D3-C1","title":"Implement sections","desc":"Hero, Features, Pricing, FAQ, Testimonials, CTA"},
+    {"id":"D3-C2","title":"3–4 variants each","desc":"responsive + accessible"},
+    {"id":"D3-C3","title":"SectionRegistry + typed props","desc":""}
+  ]},
+  { "day":"D4", "items":[
+    {"id":"D4-C1","title":"Editor forms + Zod validation","desc":""},
+    {"id":"D4-C2","title":"Drag & drop reorder / duplicate / delete","desc":"dnd-kit"},
+    {"id":"D4-C3","title":"Autosave to IndexedDB","desc":"recover last draft"}
+  ]},
+  { "day":"D5", "items":[
+    {"id":"D5-C1","title":"Brief form (industry, audience, tone, goal)","desc":""},
+    {"id":"D5-C2","title":"Deterministic rule generator (8 industries)","desc":""},
+    {"id":"D5-C3","title":"Draft copy templates","desc":"tone mapping"}
+  ]},
+  { "day":"D6", "items":[
+    {"id":"D6-C1","title":"exportProject builds static Next site in memory","desc":"download zip"},
+    {"id":"D6-C2","title":"README deploy steps","desc":"verify build on Windows"},
+    {"id":"D6-C3","title":"Optional GitHub export (PAT)","desc":"if you choose to support it"}
+  ]},
+  { "day":"D7", "items":[
+    {"id":"D7-C1","title":"Settings modal, key stored locally","desc":"AI off switch"},
+    {"id":"D7-C2","title":"Edge function for copy improve","desc":"rate limit; no logs"}
+  ]},
+  { "day":"D8", "items":[
+    {"id":"D8-C1","title":"A11y + SEO pass","desc":"labels, alt text, headings, meta, sitemap"},
+    {"id":"D8-C2","title":"Performance + crash safety","desc":"reduce CLS, optimize images, ErrorBoundary"}
+  ]},
+  { "day":"D9", "items":[
+    {"id":"D9-C1","title":"Public landing (brief→build→edit→export→deploy)","desc":""},
+    {"id":"D9-C2","title":"Six demo sites deployed","desc":"links on landing"},
+    {"id":"D9-C3","title":"Docs & legal pages","desc":"Quick Start, Export, Tokens, FAQ, ToS, Privacy, AUP, non-affiliation"}
+  ]},
+  { "day":"D10", "items":[
+    {"id":"D10-C1","title":"Safety & load checks","desc":"sanitize inputs, restrict images, CSP, 100 sections"},
+    {"id":"D10-C2","title":"Polish & announce","desc":"empty states, tooltips, domain to Vercel, 2-min demo"}
+  ]}
+]

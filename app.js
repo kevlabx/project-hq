@@ -1,35 +1,114 @@
-/* global CONFIG */
-const el = (sel, root = document) => root.querySelector(sel);
-const els = (sel, root = document) => [...root.querySelectorAll(sel)];
+/* Assignment-mode Project HQ: all state local to the browser. No GitHub links. */
+
+const el  = (sel, root=document) => root.querySelector(sel);
+const els = (sel, root=document) => [...root.querySelectorAll(sel)];
 const fmtPct = n => `${Math.round(n)}%`;
 
-// ---------- tiny fetch helpers with good errors ----------
-async function getJSON(url) {
-  const res = await fetch(url, { cache: "no-cache" });
-  if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
-  try {
-    return await res.json();
-  } catch (e) {
-    throw new Error(`JSON parse failed for ${url}: ${e.message}`);
-  }
-}
+const STORAGE_KEY = "LP_HQ_STATE_V1";
+const OVERLAY_VERSION = 1;
 
-async function getText(url) {
-  const res = await fetch(url, { cache: "no-cache" });
-  if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
-  return res.text();
-}
+// ---------- small fetch helpers with good errors ----------
+async function getJSON(url){ const r = await fetch(url,{cache:"no-cache"}); if(!r.ok) throw new Error(`Fetch ${r.status} ${url}`); return r.json(); }
+async function getText(url){ const r = await fetch(url,{cache:"no-cache"}); if(!r.ok) throw new Error(`Fetch ${r.status} ${url}`); return r.text(); }
 
 // ---------- state ----------
 const state = {
-  data: null,
+  base: null,      // base data from /data/*
+  overlay: null,   // local-only progress/edits
   view: "dashboard",
-  day: "D1"
+  day: "D1",
+  edit: false
 };
 
+// ---------- overlay (localStorage) ----------
+function emptyOverlay(){
+  const days = ["D1","D2","D3","D4","D5","D6","D7","D8","D9","D10"];
+  const dayNotes = Object.fromEntries(days.map(d => [d, {start:"", end:"", complete:false}]));
+  return {
+    version: OVERLAY_VERSION,
+    dayTicks: {},          // { D1: { itemId:true } }
+    dayNotes,              // { Dn: { start, end, complete } }
+    bugs: [],              // [{id, title, status, severity}]
+    parkingLocal: [],      // [{name, area}]
+    decisionsLocal: [],    // [{id,date,decision,impact}]
+    ssotPatch: "",         // override html (sanitized)
+    lastSaved: null,
+    activity: []           // [{time,type,detail}]
+  };
+}
+
+function loadOverlay(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return emptyOverlay();
+    const obj = JSON.parse(raw);
+    if(obj.version !== OVERLAY_VERSION) return emptyOverlay();
+    return {...emptyOverlay(), ...obj};
+  }catch(_){ return emptyOverlay(); }
+}
+
+function saveOverlay(){
+  state.overlay.lastSaved = new Date().toISOString();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.overlay));
+  const label = el('#last-saved');
+  if (label) label.textContent = `Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}`;
+}
+
+function recordActivity(type, detail){
+  state.overlay.activity.push({ time: Date.now(), type, detail });
+  if (state.overlay.activity.length > 300) state.overlay.activity.shift();
+}
+
+function exportOverlay(){
+  const blob = new Blob([JSON.stringify(state.overlay, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `project-hq-progress-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importOverlayFromFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const obj = JSON.parse(String(reader.result));
+      if (!obj || obj.version !== OVERLAY_VERSION) throw new Error("Wrong or missing version");
+      state.overlay = {...emptyOverlay(), ...obj};
+      saveOverlay();
+      render();
+    }catch(e){ alert(`Import failed: ${e.message}`); }
+  };
+  reader.readAsText(file);
+}
+
+function resetOverlay(){
+  if (!confirm("This clears your local progress. Continue?")) return;
+  state.overlay = emptyOverlay();
+  saveOverlay();
+  render();
+}
+
+// ---------- sanitisers ----------
+function esc(s=""){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+// super simple allowlist for SSOT rendered HTML
+function sanitizeHtml(html=""){
+  // strip event handlers and script/style tags
+  let out = String(html).replace(/<\s*(script|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,"");
+  out = out.replace(/\son\w+="[^"]*"/gi,"").replace(/\son\w+='[^']*'/gi,"");
+  // allow a, strong, em, ul, ol, li, br, p
+  // remove unknown tags by escaping them
+  const allowed = /^(a|strong|em|ul|ol|li|br|p|b|i)$/i;
+  out = out.replace(/<\/?([a-z0-9-]+)([^>]*)>/gi, (m,tag,attrs)=>{
+    return allowed.test(tag) ? `<${tag}${attrs}>` : esc(m);
+  });
+  return out;
+}
+
 // ---------- data loading ----------
-async function loadData() {
-  const [prompts, sprints, roadmap, tasks, bugs, parking, decisions] =
+async function loadBase(){
+  const [prompts, sprints, roadmap, tasks, bugsSeed, parkingSeed, decisionsSeed, dayChecks] =
     await Promise.all([
       getJSON("data/prompts.json"),
       getJSON("data/sprints.json"),
@@ -37,135 +116,290 @@ async function loadData() {
       getJSON("data/tasks.json"),
       getJSON("data/bugs.json"),
       getJSON("data/parking.json"),
-      getJSON("data/decisions.json")
+      getJSON("data/decisions.json"),
+      getJSON("data/day_checklists.json")
     ]);
   const ssot = await getText("data/ssot.html");
-  // minimal shape checks to avoid hard crashes later
-  const safe = x => (Array.isArray(x) ? x : []);
-  state.data = {
-    prompts: safe(prompts),
-    sprints: safe(sprints),
-    roadmap: safe(roadmap),
-    tasks: safe(tasks),
-    bugs: safe(bugs),
-    parking: safe(parking),
-    decisions: safe(decisions),
-    ssot: ssot || ""
-  };
+  state.base = {prompts,sprints,roadmap,tasks,bugsSeed,parkingSeed,decisionsSeed,dayChecks,ssot};
 }
 
-// ---------- computations ----------
-function overallProgress() {
-  const tasks = state.data.tasks || [];
-  if (!tasks.length) return 0;
-  const avg = tasks.reduce((a, t) => a + (Number(t.percent) || 0), 0) / tasks.length;
-  return avg;
+// ---------- progress computations ----------
+function dayItems(day){
+  const d = state.base.dayChecks.find(x => x.day === day);
+  return d ? d.items : [];
 }
 
-function byStatus() {
-  const groups = { "Not started": [], "In progress": [], "Blocked": [], "Done": [] };
-  (state.data.tasks || []).forEach(t => (groups[t.status] ?? groups["Not started"]).push(t));
-  return groups;
+function dayTickedCount(day){
+  const items = dayItems(day);
+  const ticks = state.overlay.dayTicks[day] || {};
+  return items.reduce((n,it)=> n + (ticks[it.id] ? 1 : 0), 0);
 }
 
-function tasksForDay(day) {
-  return (state.data.tasks || []).filter(t => t.day === day);
+function dayProgressPct(day){
+  const items = dayItems(day);
+  if (!items.length) return 0;
+  return (dayTickedCount(day) / items.length) * 100;
 }
 
-// ---------- GitHub config helpers (safe even if CONFIG isn't defined) ----------
-function getCfg() {
-  return (typeof window !== "undefined" && window.CONFIG) ? window.CONFIG : null;
-}
-function hasRepoConfig() {
-  const c = getCfg();
-  return !!(c && c.GITHUB_OWNER && c.GITHUB_REPO);
+function overallProgress(){
+  const days = state.base.sprints.map(s=>s.day);
+  if (!days.length) return 0;
+  const sum = days.reduce((a,d)=> a + dayProgressPct(d), 0);
+  return sum / days.length;
 }
 
-function issueURLForTaskUpdate(task) {
-  const c = getCfg();
-  if (!c) return null;
-  const title = encodeURIComponent(`Task Update: ${task.id} ${task.title}`);
-  const body = encodeURIComponent(
-`<!-- edit fields below; keep JSON intact -->
-{
-  "taskId": "${task.id}",
-  "status": "${task.status}",
-  "percent": ${Number(task.percent) || 0},
-  "note": "what changed",
-  "owner": "@your-github-username"
-}
-`);
-  const labels = encodeURIComponent("task-update");
-  return `https://github.com/${c.GITHUB_OWNER}/${c.GITHUB_REPO}/issues/new?title=${title}&labels=${labels}&body=${body}`;
+// ---------- rendering helpers ----------
+function tagStatus(s){
+  const m = {"Done":"badge-ok","In progress":"badge-warn","Blocked":"badge-bad","Not started":""}[s] || "";
+  return `<span class="tag ${m}">${s}</span>`;
 }
 
-function issueURLForBug(task) {
-  const c = getCfg();
-  if (!c) return null;
-  const title = encodeURIComponent(`Bug: ${task ? task.id + " " : ""}describe-problem`);
-  const labels = encodeURIComponent("bug");
-  const body = encodeURIComponent(
-`Steps:
-1. 
-2. 
-Expected: 
-Actual:
-
-Linked Task: ${task ? task.id : "N/A"}
-Severity: Sev2
-`);
-  return `https://github.com/${c.GITHUB_OWNER}/${c.GITHUB_REPO}/issues/new?title=${title}&labels=${labels}&body=${body}`;
+function boardCols(){
+  const groups = { "Not started":[], "In progress":[], "Blocked":[], "Done":[] };
+  state.base.tasks.forEach(t => groups[t.status]?.push(t));
+  const cols = Object.entries(groups).map(([k,items])=>`
+    <div class="column">
+      <div class="h2">${k} <span class="tag">${items.length}</span></div>
+      ${items.map(t=>`
+        <div class="card">
+          <h4>${esc(t.id)} · ${esc(t.title)}</h4>
+          <div class="small muted">${esc(t.day)} · ${esc(t.priority)} · ${esc(String(t.percent||0))}%</div>
+          <div class="note">Guidance only. Progress is tracked by day checklists.</div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+  return `<div class="board">${cols}</div>`;
 }
 
+function renderChecklist(day){
+  const items = dayItems(day);
+  const ticks = state.overlay.dayTicks[day] || {};
+  const disabled = state.edit ? "" : "disabled";
+  return `
+    <div class="panel">
+      <div class="h2">Checklist for ${day} <span class="small muted">(${dayTickedCount(day)} / ${items.length})</span></div>
+      ${items.map(it=>`
+        <label class="checkbox">
+          <input type="checkbox" data-action="tick" data-day="${day}" data-id="${esc(it.id)}" ${ticks[it.id]?'checked':''} ${disabled}/>
+          <div><strong>${esc(it.title)}</strong><div class="small muted">${esc(it.desc||"")}</div></div>
+        </label>
+      `).join('')}
+      <div class="toolbar">
+        <label class="checkbox">
+          <input type="checkbox" data-action="day-complete" data-day="${day}" ${state.overlay.dayNotes[day]?.complete ? 'checked':''} ${disabled}/>
+          <div><strong>Mark day complete</strong></div>
+        </label>
+        <div class="tag">Progress: ${Math.round(dayProgressPct(day))}%</div>
+      </div>
+    </div>
+  `;
+}
 
-// ---------- rendering ----------
-function render() {
-  const app = el("#app");
-  if (!state.data) {
-    app.innerHTML = '<div class="panel">Loading…</div>';
-    return;
-  }
+function renderDayNotes(day){
+  const notes = state.overlay.dayNotes[day] || {start:"", end:""};
+  const disabled = state.edit ? "" : "disabled";
+  return `
+    <div class="grid cols-2">
+      <div class="panel">
+        <div class="h2">Start notes</div>
+        <textarea class="textarea" data-action="note-start" data-day="${day}" ${disabled}>${esc(notes.start)}</textarea>
+      </div>
+      <div class="panel">
+        <div class="h2">End notes</div>
+        <textarea class="textarea" data-action="note-end" data-day="${day}" ${disabled}>${esc(notes.end)}</textarea>
+      </div>
+    </div>
+  `;
+}
 
-  const prog = overallProgress();
+function renderPromptList(includeDays=false){
+  const list = includeDays ? state.base.prompts : state.base.prompts.slice(0,3);
+  return `
+    <table class="table">
+      <thead><tr><th>Day</th><th>Start prompt</th><th>End prompt</th></tr></thead>
+      <tbody>
+        ${list.map(p=>`
+        <tr>
+          <td>${p.day}</td>
+          <td>
+            <div class="code">${esc(p.start)}</div>
+            <div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p.start)}">Copy</button></div>
+          </td>
+          <td>
+            <div class="code">${esc(p.end)}</div>
+            <div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p.end)}">Copy</button></div>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
 
-  if (state.view === "dashboard") {
+function renderBugs(){
+  const disabled = state.edit ? "" : "disabled";
+  const list = state.overlay.bugs;
+  return `
+    <div class="panel">
+      <div class="h2">Bugs</div>
+      <div class="toolbar">
+        <input class="input" placeholder="Bug title" id="bug-title" ${disabled}/>
+        <select class="input" id="bug-sev" ${disabled}>
+          <option>Sev2</option><option>Sev1</option><option>Sev3</option>
+        </select>
+        <button class="btn" data-action="bug-add" ${disabled}>Add</button>
+      </div>
+      <table class="table">
+        <thead><tr><th>Bug</th><th>Status</th><th>Severity</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${list.map((b,i)=>`
+            <tr>
+              <td><strong>#${i+1}</strong> ${esc(b.title)} ${b.local?'<span class="badge-local">local</span>':''}</td>
+              <td>${esc(b.status||"New")}</td>
+              <td>${esc(b.severity||"Sev2")}</td>
+              <td>
+                <button class="btn" data-action="bug-status" data-idx="${i}" data-val="New" ${disabled}>New</button>
+                <button class="btn" data-action="bug-status" data-idx="${i}" data-val="In progress" ${disabled}>In progress</button>
+                <button class="btn" data-action="bug-status" data-idx="${i}" data-val="Done" ${disabled}>Done</button>
+                <button class="btn" data-action="bug-del" data-idx="${i}" ${disabled}>Delete</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div class="note">Bugs are stored only in your browser. Export JSON to share.</div>
+    </div>
+  `;
+}
+
+function renderParking(){
+  const disabled = state.edit ? "" : "disabled";
+  const base = state.base.parkingSeed;
+  const local = state.overlay.parkingLocal;
+  return `
+    <div class="panel">
+      <div class="h2">Parking Lot</div>
+      <div class="toolbar">
+        <input class="input" placeholder="Idea" id="pk-name" ${disabled}/>
+        <input class="input" placeholder="Area (Builder / Sections / Export / ...)" id="pk-area" ${disabled}/>
+        <button class="btn" data-action="pk-add" ${disabled}>Add</button>
+      </div>
+      <table class="table">
+        <thead><tr><th>Idea</th><th>Area</th><th></th></tr></thead>
+        <tbody>
+          ${base.map(p=>`
+            <tr><td>${esc(p.name)}</td><td>${esc(p.area)}</td><td></td></tr>
+          `).join('')}
+          ${local.map((p,i)=>`
+            <tr><td>${esc(p.name)} <span class="badge-local">local</span></td><td>${esc(p.area)}</td>
+            <td><button class="btn" data-action="pk-del" data-idx="${i}" ${disabled}>Delete</button></td></tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div class="note">Base items are read-only. Your additions are local.</div>
+    </div>
+  `;
+}
+
+function renderDecisions(){
+  const disabled = state.edit ? "" : "disabled";
+  const base = state.base.decisionsSeed;
+  const local = state.overlay.decisionsLocal;
+  return `
+    <div class="panel">
+      <div class="h2">Decisions log</div>
+      <div class="toolbar">
+        <input class="input" placeholder="ID (e.g., D-003)" id="dc-id" ${disabled}/>
+        <input class="input" placeholder="Date (YYYY-MM-DD)" id="dc-date" ${disabled}/>
+        <input class="input" placeholder="Decision" id="dc-decision" ${disabled}/>
+        <input class="input" placeholder="Impact" id="dc-impact" ${disabled}/>
+        <button class="btn" data-action="dc-add" ${disabled}>Add</button>
+      </div>
+      <table class="table">
+        <thead><tr><th>ID</th><th>Decision</th><th>Date</th><th>Impact</th><th></th></tr></thead>
+        <tbody>
+          ${base.map(d=>`
+            <tr><td>${esc(d.id)}</td><td>${esc(d.decision)}</td><td>${esc(d.date)}</td><td>${esc(d.impact)}</td><td></td></tr>
+          `).join('')}
+          ${local.map((d,i)=>`
+            <tr><td>${esc(d.id)} <span class="badge-local">local</span></td><td>${esc(d.decision)}</td><td>${esc(d.date)}</td><td>${esc(d.impact)}</td>
+            <td><button class="btn" data-action="dc-del" data-idx="${i}" ${disabled}>Delete</button></td></tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderSSOT(){
+  const disabled = state.edit ? "" : "disabled";
+  const html = state.overlay.ssotPatch ? sanitizeHtml(state.overlay.ssotPatch) : state.base.ssot;
+  return `
+    <div class="panel">
+      <div class="h2">Single Source of Truth</div>
+      <div class="code" style="white-space:normal" id="ssot-view">${html}</div>
+      <div class="toolbar">
+        <button class="btn" data-action="ssot-edit" ${disabled}>Edit (local)</button>
+        <button class="btn" data-action="ssot-clear" ${disabled}>Revert to base</button>
+      </div>
+      <div class="note">Edits are stored locally and sanitized. Base SSOT is never changed.</div>
+      <div id="ssot-editor" style="display:none">
+        <textarea class="textarea" id="ssot-text"></textarea>
+        <div class="toolbar">
+          <button class="btn" data-action="ssot-save">Save</button>
+          <button class="btn" data-action="ssot-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ---------- main render ----------
+function render(){
+  const app = el('#app');
+  if (!state.base){ app.innerHTML = '<div class="panel">Loading…</div>'; return; }
+
+  // header edit button label
+  const btn = el('#btn-edit'); if(btn) btn.textContent = `Edit: ${state.edit ? 'On' : 'Off'}`;
+  const ringAll = overallProgress();
+
+  if (state.view === 'dashboard'){
     app.innerHTML = `
       <section class="grid cols-3">
         <div class="panel kpi">
-          <div class="ring" style="--p:${prog}"></div>
+          <div class="ring" style="--p:${ringAll}"></div>
           <div>
             <div class="h2">Overall progress</div>
-            <div class="small muted">Average of all task percentages</div>
-            <div class="h2">${fmtPct(prog)}</div>
+            <div class="small muted">Calculated from daily checklists</div>
+            <div class="h2">${fmtPct(ringAll)}</div>
           </div>
         </div>
         <div class="panel kpi">
           <div>
-            <div class="h2">Tasks</div>
-            <div class="small muted">Total and done</div>
-            <div class="h2">${state.data.tasks.length} total • ${state.data.tasks.filter(t=>t.status==='Done').length} done</div>
+            <div class="h2">Assignment</div>
+            <div class="small muted">Build LoomPages MVP in your own repo</div>
+            <div class="h2">10 days</div>
           </div>
         </div>
         <div class="panel kpi">
           <div>
-            <div class="h2">Today focus</div>
-            <div class="small muted">Select a day on “Days” to focus</div>
-            <div class="h2">${state.day}</div>
+            <div class="h2">Privacy</div>
+            <div class="small muted">Local-only tracking</div>
+            <div class="h2">No uploads</div>
           </div>
         </div>
       </section>
 
       <section class="panel">
-        <div class="h2">Live task board</div>
-        ${renderBoard()}
+        <div class="h2">Live task board (reference)</div>
+        ${boardCols()}
       </section>
 
       <section class="grid cols-2">
         <div class="panel">
           <div class="h2">SSOT quick view</div>
-          <div class="small muted">Single Source of Truth summary</div>
-          <div class="code" style="max-height:180px;overflow:auto">${state.data.ssot}</div>
-          <div class="footer-note">Open the SSOT tab for full content.</div>
+          <div class="small muted">Single Source of Truth summary (editable locally on SSOT tab)</div>
+          <div class="code" style="max-height:180px;overflow:auto">${state.overlay.ssotPatch ? sanitizeHtml(state.overlay.ssotPatch) : state.base.ssot}</div>
         </div>
         <div class="panel">
           <div class="h2">Daily prompts library</div>
@@ -176,135 +410,57 @@ function render() {
     `;
   }
 
-  if (state.view === "days") {
+  if (state.view === 'days'){
     const day = state.day;
-    const tasks = tasksForDay(day);
-    const prompt = (state.data.prompts || []).find(p => p.day === day);
+    const p = state.base.prompts.find(x=>x.day===day);
     app.innerHTML = `
       <section class="panel">
         <div class="toolbar">
-          ${state.data.sprints.map(s => `
-            <button class="btn ${s.day === day ? "nav-active" : ""}" data-day="${s.day}" data-action="set-day">${s.day}</button>
-          `).join("")}
+          ${state.base.sprints.map(s=>`
+            <button class="btn ${s.day===day?'nav-active':''}" data-day="${s.day}" data-action="set-day">${s.day}</button>
+          `).join('')}
         </div>
         <div class="h2">Day ${day.slice(1)} plan</div>
         <div class="grid cols-2">
           <div class="panel">
             <div class="h2">Start prompt</div>
-            <div class="code">${escapeHtml(prompt?.start || "No prompt found for this day.")}</div>
+            <div class="code">${esc(p?.start||"No prompt")}</div>
+            <div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p?.start||'')}">Copy</button></div>
           </div>
           <div class="panel">
             <div class="h2">End prompt</div>
-            <div class="code">${escapeHtml(prompt?.end || "No end prompt found for this day.")}</div>
+            <div class="code">${esc(p?.end||"No prompt")}</div>
+            <div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p?.end||'')}">Copy</button></div>
           </div>
         </div>
       </section>
 
-      <section class="panel">
-        <div class="h2">Tasks for ${day}</div>
-        <table class="table">
-          <thead><tr><th>Task</th><th>Status</th><th>%</th><th>Priority</th><th>Actions</th></tr></thead>
-          <tbody>
-            ${tasks.map(t => `
-              <tr>
-                <td><strong>${t.id}</strong> ${t.title}<br><span class="small muted">${(t.checklist||[]).join(" • ")}</span></td>
-                <td>${tagStatus(t.status)}</td>
-                <td>${t.percent || 0}</td>
-                <td>${t.priority}</td>
-                <td>
-                  ${renderIssueButtons(t)}
-                </td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </section>
+      ${renderChecklist(day)}
+      ${renderDayNotes(day)}
     `;
   }
 
-  if (state.view === "tasks") {
+  if (state.view === 'tasks'){
     app.innerHTML = `
       <section class="panel">
-        <div class="h2">Kanban board</div>
-        ${renderBoard()}
+        <div class="h2">Kanban board (reference only)</div>
+        ${boardCols()}
       </section>
     `;
   }
 
-  if (state.view === "bugs") {
-    app.innerHTML = `
-      <section class="panel">
-        <div class="h2">Bugs</div>
-        <div class="toolbar">
-          ${hasRepoConfig()
-            ? `<a class="btn" href="${issueURLForBug()}" target="_blank">Report new bug</a>`
-            : `<span class="btn" title="Set GITHUB_OWNER/REPO in data/config.js">Report new bug (configure repo)</span>`}
-        </div>
-        <table class="table">
-          <thead><tr><th>Bug</th><th>Status</th><th>Severity</th></tr></thead>
-          <tbody>
-            ${state.data.bugs.map(b => `
-            <tr>
-              <td><strong>#${b.id}</strong> ${b.title}</td>
-              <td>${tagStatus(b.status)}</td>
-              <td>${b.severity}</td>
-            </tr>`).join("")}
-          </tbody>
-        </table>
-        <div class="note">Bugs list updates when issues are synced by workflow.</div>
-      </section>
-    `;
+  if (state.view === 'bugs'){ app.innerHTML = renderBugs(); }
+  if (state.view === 'parking'){ app.innerHTML = renderParking(); }
+  if (state.view === 'decisions'){ app.innerHTML = renderDecisions(); }
+
+  if (state.view === 'docs'){
+    app.innerHTML = renderSSOT();
+    // prep hidden editor textarea with current patch or base
+    const ed = el("#ssot-text");
+    if (ed) ed.value = state.overlay.ssotPatch || state.base.ssot;
   }
 
-  if (state.view === "docs") {
-    app.innerHTML = `
-      <section class="panel">
-        <div class="h2">Single Source of Truth</div>
-        <div class="code" style="white-space:normal">${state.data.ssot}</div>
-      </section>
-    `;
-  }
-
-  if (state.view === "decisions") {
-    app.innerHTML = `
-      <section class="panel">
-        <div class="h2">Decisions log</div>
-        <table class="table">
-          <thead><tr><th>ID</th><th>Decision</th><th>Date</th><th>Impact</th></tr></thead>
-          <tbody>
-          ${state.data.decisions.map(d => `
-            <tr>
-              <td>${d.id}</td>
-              <td>${d.decision}</td>
-              <td>${d.date}</td>
-              <td>${d.impact}</td>
-            </tr>`).join("")}
-          </tbody>
-        </table>
-      </section>
-    `;
-  }
-
-  if (state.view === "parking") {
-    app.innerHTML = `
-      <section class="panel">
-        <div class="h2">Parking Lot</div>
-        <table class="table">
-          <thead><tr><th>Idea</th><th>Area</th></tr></thead>
-          <tbody>
-          ${state.data.parking.map(p => `
-            <tr>
-              <td>${p.name}</td>
-              <td>${p.area}</td>
-            </tr>`).join("")}
-          </tbody>
-        </table>
-        <div class="note">Use “New issue → Idea” to add items. Workflow can sync later.</div>
-      </section>
-    `;
-  }
-
-  if (state.view === "prompts") {
+  if (state.view === 'prompts'){
     app.innerHTML = `
       <section class="panel">
         <div class="h2">Prompts library</div>
@@ -313,7 +469,7 @@ function render() {
     `;
   }
 
-  if (state.view === "demos") {
+  if (state.view === 'demos'){
     app.innerHTML = `
       <section class="panel">
         <div class="h2">Demo gallery</div>
@@ -326,7 +482,7 @@ function render() {
     `;
   }
 
-  if (state.view === "commands") {
+  if (state.view === 'commands'){
     app.innerHTML = `
       <section class="panel">
         <div class="h2">Windows commands</div>
@@ -336,107 +492,173 @@ function render() {
     `;
   }
 
-  els(".nav button").forEach(b => b.classList.toggle("active", b.dataset.view === state.view));
-  els(".ring").forEach(r => r.style.setProperty("--p", prog));
+  els('.nav button').forEach(b => b.classList.toggle('active', b.dataset.view===state.view));
+  els('.ring').forEach(r => r.style.setProperty('--p', overallProgress()));
 }
 
-function renderIssueButtons(t) {
-  if (!hasRepoConfig()) {
-    return `<span class="btn" title="Set GITHUB_OWNER/REPO in data/config.js">Update (configure repo)</span>
-            <span class="btn" title="Set GITHUB_OWNER/REPO in data/config.js">Bug (configure repo)</span>`;
-  }
-  return `
-    <a class="btn" href="${issueURLForTaskUpdate(t)}" target="_blank">Update</a>
-    <a class="btn" href="${issueURLForBug(t)}" target="_blank">Bug</a>
-  `;
-}
-
-function renderBoard() {
-  const groups = byStatus();
-  const cols = Object.entries(groups).map(([k, items]) => `
-    <div class="column">
-      <div class="h2">${k} <span class="tag">${items.length}</span></div>
-      ${items.map(t => `
-        <div class="card">
-          <h4>${t.id} · ${t.title}</h4>
-          <div class="small muted">${t.day} · ${t.priority} · ${t.percent || 0}%</div>
-          <div class="toolbar">
-            ${renderIssueButtons(t)}
-          </div>
-        </div>
-      `).join("")}
-    </div>
-  `).join("");
-  return `<div class="board">${cols}</div>`;
-}
-
-function renderPromptList(includeDays = false) {
-  const list = includeDays ? state.data.prompts : state.data.prompts.slice(0, 3);
-  return `
-    <table class="table">
-      <thead><tr><th>Day</th><th>Start prompt</th><th>End prompt</th></tr></thead>
-      <tbody>
-        ${list.map(p => `
-        <tr>
-          <td>${p.day}</td>
-          <td><div class="code">${escapeHtml(p.start)}</div></td>
-          <td><div class="code">${escapeHtml(p.end)}</div></td>
-        </tr>`).join("")}
-      </tbody>
-    </table>
-  `;
-}
-
-function tagStatus(s) {
-  const m = {
-    "Done": "badge-ok",
-    "In progress": "badge-warn",
-    "Blocked": "badge-bad",
-    "Not started": ""
-  }[s] || "";
-  return `<span class="tag ${m}">${s}</span>`;
-}
-
-function escapeHtml(s = "") {
-  return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-}
-
-function wireNav() {
-  els(".nav button").forEach(b => {
-    b.addEventListener("click", () => {
-      state.view = b.dataset.view;
-      render();
-    });
-  });
-  document.addEventListener("click", e => {
-    const t = e.target.closest('[data-action="set-day"]');
-    if (t) { state.day = t.dataset.day; render(); }
-  });
-}
-
-// ---------- boot with safety net ----------
-(function attachGlobalErrorPanels() {
-  window.addEventListener("error", e => showFatal(e.error || e.message));
-  window.addEventListener("unhandledrejection", e => showFatal(e.reason || e));
-})();
-
-function showFatal(err) {
-  const app = el("#app");
-  if (!app) return;
-  console.error("Fatal:", err);
-  app.innerHTML = `<div class="panel">
-    <div class="h2">Load error</div>
-    <div class="small muted">Open DevTools (F12) → Console for details. Likely a missing file or invalid JSON.</div>
-    <pre class="code">${escapeHtml(String(err))}</pre>
-  </div>`;
-}
-
-(async function init() {
-  try {
-    wireNav();
-    await loadData();
+// ---------- wiring ----------
+function wireHeader(){
+  el('#btn-edit')?.addEventListener('click', ()=>{
+    state.edit = !state.edit;
     render();
-  } catch (err) {
-    showFatal(err);
+  });
+  el('#btn-export')?.addEventListener('click', ()=> exportOverlay());
+  el('#btn-import')?.addEventListener('click', ()=> el('#file-import').click());
+  el('#file-import')?.addEventListener('change', (e)=> {
+    const f = e.target.files?.[0]; if (f) importOverlayFromFile(f);
+    e.target.value = "";
+  });
+  el('#btn-reset')?.addEventListener('click', resetOverlay);
+}
+
+function wireAppLevel(){
+  document.addEventListener('click', (e)=>{
+    const t = e.target;
+
+    if (t.matches('.nav button')){ state.view = t.dataset.view; render(); return; }
+    const dayBtn = t.closest('[data-action="set-day"]'); if (dayBtn){ state.day = dayBtn.dataset.day; render(); return; }
+
+    if (t.matches('[data-action="copy"]')){
+      navigator.clipboard.writeText(t.dataset.text || "");
+      t.textContent = "Copied"; setTimeout(()=>t.textContent="Copy",1200);
+      return;
+    }
+
+    if (t.matches('[data-action="tick"]')){
+      if (!state.edit) return;
+      const day = t.dataset.day, id = t.dataset.id;
+      state.overlay.dayTicks[day] = state.overlay.dayTicks[day] || {};
+      state.overlay.dayTicks[day][id] = !!t.checked;
+      recordActivity('tick', `${day}:${id}=${t.checked}`);
+      saveOverlay(); render();
+      return;
+    }
+
+    if (t.matches('[data-action="day-complete"]')){
+      if (!state.edit) return;
+      const day = t.dataset.day;
+      state.overlay.dayNotes[day] = state.overlay.dayNotes[day] || {start:"", end:"", complete:false};
+      state.overlay.dayNotes[day].complete = t.checked;
+      recordActivity('day-complete', `${day}=${t.checked}`);
+      saveOverlay(); render();
+      return;
+    }
+
+    // Bugs
+    if (t.matches('[data-action="bug-add"]')){
+      if (!state.edit) return;
+      const title = el('#bug-title')?.value.trim(); const sev = el('#bug-sev')?.value || "Sev2";
+      if (!title) return alert("Enter a bug title");
+      state.overlay.bugs.push({ title, severity: sev, status: "New", local:true });
+      recordActivity('bug-add', title);
+      saveOverlay(); render();
+      return;
+    }
+    if (t.matches('[data-action="bug-status"]')){
+      if (!state.edit) return;
+      const i = Number(t.dataset.idx); const v = t.dataset.val;
+      if (state.overlay.bugs[i]) state.overlay.bugs[i].status = v;
+      recordActivity('bug-status', `${i}:${v}`);
+      saveOverlay(); render(); return;
+    }
+    if (t.matches('[data-action="bug-del"]')){
+      if (!state.edit) return;
+      const i = Number(t.dataset.idx);
+      state.overlay.bugs.splice(i,1);
+      recordActivity('bug-del', String(i));
+      saveOverlay(); render(); return;
+    }
+
+    // Parking
+    if (t.matches('[data-action="pk-add"]')){
+      if (!state.edit) return;
+      const name = el('#pk-name')?.value.trim(); const area = el('#pk-area')?.value.trim();
+      if (!name) return alert("Enter idea");
+      state.overlay.parkingLocal.push({name, area});
+      recordActivity('pk-add', name);
+      saveOverlay(); render(); return;
+    }
+    if (t.matches('[data-action="pk-del"]')){
+      if (!state.edit) return;
+      const i = Number(t.dataset.idx);
+      state.overlay.parkingLocal.splice(i,1);
+      recordActivity('pk-del', String(i));
+      saveOverlay(); render(); return;
+    }
+
+    // Decisions
+    if (t.matches('[data-action="dc-add"]')){
+      if (!state.edit) return;
+      const id = el('#dc-id')?.value.trim();
+      const date = el('#dc-date')?.value.trim();
+      const decision = el('#dc-decision')?.value.trim();
+      const impact = el('#dc-impact')?.value.trim();
+      if (!id || !decision) return alert("Enter ID and decision");
+      state.overlay.decisionsLocal.push({id,date,decision,impact});
+      recordActivity('dc-add', id);
+      saveOverlay(); render(); return;
+    }
+    if (t.matches('[data-action="dc-del"]')){
+      if (!state.edit) return;
+      const i = Number(t.dataset.idx);
+      state.overlay.decisionsLocal.splice(i,1);
+      recordActivity('dc-del', String(i));
+      saveOverlay(); render(); return;
+    }
+
+    // SSOT edit
+    if (t.matches('[data-action="ssot-edit"]')){ el('#ssot-editor').style.display = 'block'; return; }
+    if (t.matches('[data-action="ssot-cancel"]')){ el('#ssot-editor').style.display = 'none'; return; }
+    if (t.matches('[data-action="ssot-clear"]')){
+      if (!state.edit) return;
+      state.overlay.ssotPatch = "";
+      recordActivity('ssot-clear', '');
+      saveOverlay(); render(); return;
+    }
+    if (t.matches('[data-action="ssot-save"]')){
+      if (!state.edit) return;
+      const raw = el('#ssot-text').value;
+      state.overlay.ssotPatch = raw;
+      recordActivity('ssot-save', `${raw.length} chars`);
+      saveOverlay(); render(); return;
+    }
+  });
+
+  document.addEventListener('input', (e)=>{
+    const t = e.target;
+    if (t.matches('[data-action="note-start"]')){
+      if (!state.edit) return;
+      const d = t.dataset.day;
+      state.overlay.dayNotes[d] = state.overlay.dayNotes[d] || {start:"", end:"", complete:false};
+      state.overlay.dayNotes[d].start = t.value;
+      saveOverlay();
+    }
+    if (t.matches('[data-action="note-end"]')){
+      if (!state.edit) return;
+      const d = t.dataset.day;
+      state.overlay.dayNotes[d] = state.overlay.dayNotes[d] || {start:"", end:"", complete:false};
+      state.overlay.dayNotes[d].end = t.value;
+      saveOverlay();
+    }
+  });
+}
+
+// ---------- init ----------
+(async function init(){
+  state.overlay = loadOverlay();
+  try{
+    wireHeader();
+    wireAppLevel();
+    await loadBase();
+    render();
+    if (state.overlay.lastSaved) {
+      const label = el('#last-saved');
+      if (label) label.textContent = `Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}`;
+    }
+  }catch(e){
+    const app = el('#app');
+    console.error(e);
+    app.innerHTML = `<div class="panel"><div class="h2">Load error</div><pre class="code">${esc(String(e))}</pre>
+    <div class="toolbar"><button class="btn" onclick="localStorage.removeItem('${STORAGE_KEY}');location.reload()">Reset local data</button></div></div>`;
   }
 })();

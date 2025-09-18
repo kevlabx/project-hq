@@ -9,9 +9,11 @@
 .brand{display:flex;gap:12px;align-items:center;padding:12px 16px}
 .logo{width:40px;height:40px;background:linear-gradient(135deg,#6aa6ff,#8a6cff);border-radius:10px;display:grid;place-items:center;font-weight:800}
 .subtitle{color:var(--muted);margin:0}
-.nav{display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px;border-top:1px solid #1e2635}
+.nav{display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px;border-top:1px solid #1e2635;align-items:center}
+.nav .grow{flex:1}
 .nav button{background:#1a2232;border:1px solid #28334a;border-radius:8px;color:var(--text);padding:8px 12px;cursor:pointer}
 .nav button.active{background:#22324a;border-color:#33507a;box-shadow:0 0 0 1px #33507a inset}
+.controls{display:flex;gap:8px;align-items:center}
 .panel{background:var(--panel);border:1px solid #1e2635;border-radius:12px;padding:16px;margin-bottom:16px}
 .grid{display:grid;gap:16px}
 .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -36,6 +38,10 @@
 .table{width:100%;border-collapse:collapse}
 .table th,.table td{border-bottom:1px solid #21304a;padding:8px;text-align:left;vertical-align:top}
 .input{width:100%;padding:8px;border-radius:8px;border:1px solid #2a3550;background:#0f1520;color:#e7ecf7}
-.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.textarea{width:100%;min-height:120px;padding:8px;border-radius:8px;border:1px solid #2a3550;background:#0f1520;color:#e7ecf7;resize:vertical}
+.checkbox{display:flex;align-items:flex-start;gap:10px;margin:8px 0}
+.checkbox input{width:18px;height:18px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
 .note{font-size:13px;color:#a7b3cc}
 .footer-note{color:#7e8aa6;font-size:12px;margin-top:6px}
+.badge-local{border:1px solid #3a4c77;background:#172035;color:#9fb7ff;border-radius:6px;padding:2px 6px;font-size:11px}

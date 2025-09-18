@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>LoomPages Project HQ</title>
+  <title>LoomPages Project HQ — Assignment Mode</title>
   <link rel="stylesheet" href="styles.css" />
-  <meta name="description" content="Public LoomPages build plan: 10-day execution, checklists, prompts, and live progress." />
+  <meta name="description" content="Public LoomPages build plan: 10-day execution with local checklists, notes, and progress. No accounts. No repo access." />
 </head>
 <body>
   <header class="site-header">
@@ -13,7 +13,7 @@
       <div class="logo">LP</div>
       <div>
         <h1>LoomPages Project HQ</h1>
-        <p class="subtitle">Prompt → Site builder • 10-day execution • Zero backend • AI optional</p>
+        <p class="subtitle">Self-contained assignment • Build in your own repo • Nothing leaves this page</p>
       </div>
     </div>
     <nav class="nav">
@@ -27,6 +27,15 @@
       <button data-view="prompts">Prompts</button>
       <button data-view="demos">Demos</button>
       <button data-view="commands">Commands</button>
+
+      <span class="grow"></span>
+      <div class="controls">
+        <button id="btn-edit" class="btn" title="Toggle edit mode">Edit: Off</button>
+        <button id="btn-export" class="btn" title="Download your local progress">Export</button>
+        <input id="file-import" type="file" accept="application/json" hidden />
+        <button id="btn-import" class="btn" title="Import a progress JSON">Import</button>
+        <button id="btn-reset" class="btn" title="Reset local progress">Reset</button>
+      </div>
     </nav>
   </header>
 
@@ -35,10 +44,12 @@
   </main>
 
   <footer class="site-footer">
-    <div>Made for LoomPages MVP • Works on GitHub Pages • No servers</div>
+    <div>
+      <strong>Assignment summary:</strong> Use this plan to build a LoomPages MVP in your **own** repository and deployment. This HQ stores progress locally in your browser. Export JSON when sharing progress. <span class="muted">No servers. No tracking.</span>
+      <div id="last-saved" class="footer-note"></div>
+    </div>
   </footer>
 
-  <script src="data/config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
