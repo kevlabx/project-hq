@@ -5,16 +5,16 @@ const els = (s, r=document)=>[...r.querySelectorAll(s)];
 const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
 const fmtPct = n => `${Math.round(n)}%`;
 
-const STORAGE_KEY="LP_HQ_STATE_V2"; // keep V2 to preserve existing local data
-const OVERLAY_VERSION=2;
+const STORAGE_KEY="LP_HQ_STATE_V3"; // bumped schema
+const OVERLAY_VERSION=3;
 
 const DAYS = ["D1","D2","D3","D4","D5","D6","D7","D8","D9","D10"];
 
-// ---------- fetch helpers ----------
+/* fetch helpers */
 async function j(url){ const r=await fetch(url,{cache:"no-cache"}); if(!r.ok) throw new Error(`Fetch ${r.status} ${url}`); return r.json(); }
 async function t(url){ const r=await fetch(url,{cache:"no-cache"}); if(!r.ok) throw new Error(`Fetch ${r.status} ${url}`); return r.text(); }
 
-// ---------- state ----------
+/* state */
 const state = {
   base:null,
   view:"dashboard",
@@ -24,23 +24,27 @@ const state = {
   overlay:null
 };
 
-// ---------- overlay schema ----------
+/* overlay schema */
 function emptyOverlay(){
   const dayNotes = Object.fromEntries(DAYS.map(d=>[d, {start:"", end:"", intention:"", complete:false}]));
   return {
     version:OVERLAY_VERSION,
     codename:"",
-    // codeRain default OFF now; calmer UX
-    settings:{ motion:true, codeRain:false, highContrast:false, sound:false },
-    dayTicks:{},               // { D1: { id:true } }
-    dayNotes,                  // { Dn: { start,end,intention,complete } }
-    bugs:[],                   // {title, severity, status}
+    settings:{
+      motion:true,
+      highContrast:false,
+      sound:false,
+      rainMode:"off" // 'off' | 'edge' | 'nav'
+    },
+    dayTicks:{},
+    dayNotes,
+    bugs:[],
     parkingLocal:[],
     decisionsLocal:[],
     ssotPatch:"",
     focusXP:0,
     activity:[],
-    milestones:{},             // { "10":true, "25":true, ... }
+    milestones:{},
     endgame:{ repoUrl:"", demoUrl:"", retro:"", submitted:false, complete:false },
     lastSaved:null,
     lastActiveDay:"D1"
@@ -53,19 +57,15 @@ function loadOverlay(){
     if(!raw) return emptyOverlay();
     const o = JSON.parse(raw);
     if(o.version!==OVERLAY_VERSION) return emptyOverlay();
-    // tolerate older objects missing settings fields
-    const base = emptyOverlay();
-    return {...base, ...o, settings:{...base.settings, ...(o.settings||{})}};
+    return {...emptyOverlay(), ...o};
   }catch{ return emptyOverlay(); }
 }
-
 function saveOverlay(){
   state.overlay.lastSaved = new Date().toISOString();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.overlay));
   const lbl = el('#last-saved');
   if (lbl) lbl.textContent = `Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}`;
 }
-
 function act(type, detail){
   state.overlay.activity.push({time:Date.now(), type, detail});
   if(state.overlay.activity.length>400) state.overlay.activity.shift();
@@ -73,7 +73,7 @@ function act(type, detail){
   maybeMilestones();
 }
 
-// ---------- sanitizers ----------
+/* sanitizers */
 function esc(s=""){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 function sanitizeHtml(html=""){
   let out=String(html).replace(/<\s*(script|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,"");
@@ -82,7 +82,7 @@ function sanitizeHtml(html=""){
   return out.replace(/<\/?([a-z0-9-]+)([^>]*)>/gi,(m,tag,attrs)=> ok.test(tag)?`<${tag}${attrs}>`:esc(m));
 }
 
-// ---------- base load ----------
+/* base load */
 async function loadBase(){
   const [prompts,sprints,roadmap,tasks,bugsSeed,parkingSeed,decisionsSeed,dayChecks]=await Promise.all([
     j("data/prompts.json"), j("data/sprints.json"), j("data/roadmap.json"), j("data/tasks.json"),
@@ -92,7 +92,7 @@ async function loadBase(){
   state.base = {prompts,sprints,roadmap,tasks,bugsSeed,parkingSeed,decisionsSeed,dayChecks,ssot};
 }
 
-// ---------- progress ----------
+/* progress */
 function itemsForDay(day){ return (state.base.dayChecks.find(x=>x.day===day)?.items)||[]; }
 function ticksForDay(day){ return state.overlay.dayTicks[day] || (state.overlay.dayTicks[day]={}); }
 function dayTickedCount(day){ const items=itemsForDay(day); const ticks=ticksForDay(day); return items.reduce((n,i)=>n+(ticks[i.id]?1:0),0); }
@@ -104,15 +104,11 @@ function overallPctRaw(){
   const sum = days.reduce((a,d)=>a+dayPct(d),0);
   return sum/days.length;
 }
-
-// cap at 99 until endgame complete
 function overallPct(){
   const base = overallPctRaw();
   if(state.overlay.endgame.complete) return base;
   return Math.min(base, 99);
 }
-
-// streaks (consecutive completed days)
 function streaks(){
   const done = DAYS.map(d=> !!state.overlay.dayNotes[d]?.complete);
   let best=0,cur=0;
@@ -120,13 +116,13 @@ function streaks(){
   return { current:cur, best };
 }
 
-// ---------- matrix ring draw helpers ----------
+/* ring element */
 function ringHtml(p, big=false, shimmer=false){
   const cls = `ring${big?' big':''}${shimmer?' shimmer':''}`;
   return `<div class="${cls}" style="--p:${p}"><div class="readout">${fmtPct(p)}</div></div>`;
 }
 
-// ---------- toasts ----------
+/* toasts/milestones */
 function toast(msg, kind="ok"){
   const root = el('#toasts'); if(!root) return;
   const d = document.createElement('div');
@@ -134,8 +130,6 @@ function toast(msg, kind="ok"){
   root.appendChild(d);
   setTimeout(()=>{ d.style.opacity="0"; setTimeout(()=>d.remove(), 300); }, 2400);
 }
-
-// milestone nudges
 function maybeMilestones(){
   const p = Math.round(overallPctRaw());
   const marks = [10,25,50,75,90,99,100];
@@ -151,37 +145,69 @@ function maybeMilestones(){
   }
 }
 
-// ---------- code rain (background, edge gutters, off by default) ----------
-let rainRAF=0, rainCtx=null, rainCols=[], rainFont=14;
+/* code rain (mode-aware) */
+let rainRAF=0, rainCtx=null, rainCols=[], rainFont=16, rainCanvas=null;
+
+function applyRainMode(){
+  const cv = rainCanvas || el('#code-rain'); if(!cv) return;
+  cv.classList.remove('rain-off','rain-nav');
+  const mode = state.overlay.settings.rainMode;
+  if(mode==='off'){ cv.classList.add('rain-off'); }
+  if(mode==='nav'){ cv.classList.add('rain-nav'); }
+  // edge mode uses default canvas class (full-screen with radial mask)
+  resizeRain();
+}
+
+function resizeRain(){
+  const cv = rainCanvas || el('#code-rain'); if(!cv) return;
+  if(cv.classList.contains('rain-nav')){
+    cv.width = innerWidth; cv.height = 64;
+  }else{
+    cv.width = innerWidth; cv.height = innerHeight;
+  }
+  const cols = Math.ceil(cv.width/rainFont);
+  rainCols = Array(cols).fill(0);
+}
+
 function initRain(){
-  const cv = el('#code-rain'); if(!cv) return;
-  const ctx = cv.getContext('2d'); rainCtx=ctx;
-  const resize=()=>{ cv.width=innerWidth; cv.height=innerHeight; rainFont = Math.max(14, Math.min(20, Math.floor(innerWidth/90))); const cols = Math.ceil(cv.width/rainFont); rainCols = Array(cols).fill(0); };
-  addEventListener('resize', resize); resize();
+  const cv = el('#code-rain'); rainCanvas = cv; if(!cv) return;
+  rainCtx = cv.getContext('2d');
+
+  applyRainMode();
+  addEventListener('resize', resizeRain);
 
   const glyphs = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const step=()=>{
-    if(!state.overlay.settings.codeRain){ rainCtx && rainCtx.clearRect(0,0,cv.width,cv.height); rainRAF=requestAnimationFrame(step); return; }
-    // subtle trail
-    rainCtx.fillStyle="rgba(0,0,0,0.06)"; rainCtx.fillRect(0,0,cv.width,cv.height);
-    rainCtx.fillStyle="#00ff85"; rainCtx.font = `${rainFont}px monospace`;
 
-    // draw only near edges to reduce distraction
-    const sideW = Math.max(72, Math.floor(cv.width*0.09)); // gutters ~9%
-    for(let i=0;i<rainCols.length;i++){
-      const x=i*rainFont; const y = rainCols[i]*rainFont;
-      if(x<sideW || x>cv.width-sideW){
-        const txt = glyphs[Math.floor(Math.random()*glyphs.length)];
-        rainCtx.fillText(txt,x,y);
+  const step=()=>{
+    const mode = state.overlay.settings.rainMode;
+    if(mode==='off' || state.jack){ // pause when Jack In
+      if(rainCtx){
+        rainCtx.clearRect(0,0,cv.width,cv.height);
       }
+      rainRAF=requestAnimationFrame(step);
+      return;
+    }
+    rainCtx.fillStyle="rgba(0,0,0,0.06)";
+    rainCtx.clearRect(0,0,cv.width,cv.height);
+    // very subtle trail
+    rainCtx.fillRect(0,0,cv.width,cv.height);
+
+    rainCtx.fillStyle="#00ff85";
+    rainCtx.globalAlpha = mode==='nav' ? 0.35 : 0.22;
+
+    for(let i=0;i<rainCols.length;i++){
+      const txt = glyphs[Math.floor(Math.random()*glyphs.length)];
+      const x=i*rainFont; const y = rainCols[i]*rainFont;
+      rainCtx.fillText(txt,x,y);
       if(y>cv.height && Math.random()>0.975){ rainCols[i]=0; } else { rainCols[i]++; }
     }
+    rainCtx.globalAlpha = 1;
     rainRAF=requestAnimationFrame(step);
   };
   rainRAF=requestAnimationFrame(step);
 }
 
-// ---------- sounds (tiny beep) ----------
+/* sounds */
 let audioCtx=null;
 function beep(){
   if(!state.overlay.settings.sound) return;
@@ -194,7 +220,7 @@ function beep(){
   }catch{}
 }
 
-// ---------- modal helpers ----------
+/* modal */
 function openModal(html){
   const root = el('#modal-root');
   const backdrop = document.createElement('div'); backdrop.className="modal-backdrop";
@@ -206,7 +232,7 @@ function openModal(html){
   return { close, el:box };
 }
 
-// ---------- views ----------
+/* views */
 function missionHero(){
   const p = Math.round(overallPct());
   const shimmer = p>=90;
@@ -237,7 +263,6 @@ function missionHero(){
   </section>
   `;
 }
-
 function missionExplainer(){
   return `
   <section class="grid cols-3">
@@ -251,7 +276,6 @@ function missionExplainer(){
     <div class="panel">
       <div class="h2">What you’ll build</div>
       <div class="small">Sections (Hero/Features/Pricing/FAQ/Testimonials/CTA) + variants, rule-based generator (8 industries), export to ZIP, optional AI polish, quality bars (A11y/SEO/Perf).</div>
-      <div class="small muted" style="margin-top:6px">Assignment curator: <strong>Kevin</strong></div>
     </div>
     <div class="panel">
       <div class="h2">How this works</div>
@@ -264,7 +288,6 @@ function missionExplainer(){
   </section>
   `;
 }
-
 function missionDaysRail(){
   return `
   <section class="panel">
@@ -287,7 +310,6 @@ function missionDaysRail(){
   </section>
   `;
 }
-
 function operatorLine(day){
   const map = {
     D1:"Operator: boot the stack, find a phone line (first deploy).",
@@ -304,12 +326,11 @@ function operatorLine(day){
   return map[day]||"Operator: proceed.";
 }
 
-// ---------- render ----------
+/* render */
 function render(){
   const app = el('#app');
   if(!state.base){ app.innerHTML='<div class="panel">Loading…</div>'; return; }
 
-  // set theme toggles
   document.documentElement.dataset.contrast = state.overlay.settings.highContrast ? "high" : "normal";
 
   if(state.view==="dashboard"){
@@ -326,6 +347,7 @@ function render(){
     const notes = state.overlay.dayNotes[day] || { start:"", end:"", intention:"", complete:false };
     const disabled = state.edit ? "" : "disabled";
     const pct = Math.round(dayPct(day));
+
     app.innerHTML = `
       <section class="panel focus-target">
         <div class="toolbar">
@@ -349,7 +371,7 @@ function render(){
       <section class="panel focus-target">
         <div class="h2">Mission checklist ${ringHtml(pct)}</div>
         ${items.map((it,idx)=>{
-          const group = idx<3 ? "Main path" : "Side quest";
+          const group = idx<3 ? "Equip/Engage/Extract" : "Side Quest";
           return `
             <label class="checkbox">
               <input type="checkbox" data-action="tick" data-day="${day}" data-id="${esc(it.id)}" ${ticks[it.id]?'checked':''} ${disabled} />
@@ -396,7 +418,7 @@ function render(){
           <div class="card">
             <h4>${esc(t.id)} · ${esc(t.title)}</h4>
             <div class="small muted">${esc(t.day)} · ${esc(t.priority)} · ${esc(String(t.percent||0))}%</div>
-            <div class="small muted">Guidance only. Track real progress in Days.</div>
+            <div class="note small">Guidance only. Track real progress in Days.</div>
           </div>`).join('')}
       </div>`).join('');
     el('#app').innerHTML = `<section class="panel"><div class="h2">Kanban (reference)</div><div class="board">${cols}</div></section>`;
@@ -431,84 +453,81 @@ function render(){
       <section class="panel">
         <div class="h2">All prompts (copy to load programs)</div>
         ${renderPromptList(true)}
-      </section>
-      <section class="panel">
-        <div class="h2">Extra prompts — speed up, validate, and test</div>
-        ${renderExtraPrompts()}
       </section>`;
   }
 
-  // Replace DEMOS with CHEAT SHEET without changing HTML: support both routes
-  if(state.view==="cheats" || state.view==="demos"){
-    el('#app').innerHTML = renderCheatSheet();
+  if(state.view==="cheats"){
+    el('#app').innerHTML = `
+      <section class="panel">
+        <div class="h2">Cheat Sheet</div>
+        <div class="grid cols-3">
+          <div class="panel">
+            <h4>VS Code</h4>
+            <div class="small">
+              <div><span class="kbd">Ctrl</span> + <span class="kbd">P</span> Quick open</div>
+              <div><span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">P</span> Command palette</div>
+              <div><span class="kbd">Ctrl</span> + <span class="kbd">/</span> Toggle comment</div>
+              <div><span class="kbd">Alt</span> + <span class="kbd">Up/Down</span> Move line</div>
+              <div><span class="kbd">Ctrl</span> + <span class="kbd">B</span> Toggle sidebar</div>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>Git basics</h4>
+            <div class="code">git status\ngit add .\ngit commit -m "msg"\ngit push</div>
+            <div class="small muted" style="margin-top:6px">Keep commits small & meaningful.</div>
+          </div>
+          <div class="panel">
+            <h4>Shell tips</h4>
+            <div class="code">node -v\nnpm -v\npnpm -v\nnpx serve .</div>
+          </div>
+        </div>
+      </section>`;
   }
 
   if(state.view==="commands"){
-    el('#app').innerHTML = renderCommands();
+    const win = `node -v
+npm -v
+pnpm -v
+git --version
+pnpm i
+pnpm dev
+npx serve .`;
+    const mac = `node -v
+npm -v
+pnpm -v
+git --version
+pnpm install
+pnpm dev
+npx serve .`;
+    const lin = `node -v
+npm -v
+pnpm -v
+git --version
+pnpm install
+pnpm dev
+npx serve .`;
+    el('#app').innerHTML = `
+      <section class="panel">
+        <div class="h2">Commands</div>
+        <div class="toolbar">
+          <button class="btn" data-os="win">Windows</button>
+          <button class="btn" data-os="mac">macOS</button>
+          <button class="btn" data-os="lin">Linux</button>
+        </div>
+        <div class="grid cols-3">
+          <div class="panel"><h4>Windows</h4><div class="code">${esc(win)}</div></div>
+          <div class="panel"><h4>macOS</h4><div class="code">${esc(mac)}</div></div>
+          <div class="panel"><h4>Linux</h4><div class="code">${esc(lin)}</div></div>
+        </div>
+        <div class="footer-note">Use VS Code Live Server or “npx serve” to test locally.</div>
+      </section>`;
   }
 
-  // nav state & ring live update
   els('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===state.view));
   els('.ring').forEach(r=>r.style.setProperty('--p', overallPct()));
 }
 
-// ---------- extra panels ----------
-function focusPomodoro(){
-  return `
-  <section class="grid cols-3">
-    <div class="panel">
-      <div class="h2">Jack In (Focus)</div>
-      <div class="small muted">Hide distractions. Work the plan.</div>
-      <div class="toolbar"><button class="btn" data-action="jack">${state.jack? "Exit Jack In" : "Enter Jack In"}</button></div>
-    </div>
-    <div class="panel">
-      <div class="h2">Focus Timer</div>
-      <div class="toolbar">
-        <button class="btn" data-action="pomodoro" data-val="start">Start</button>
-        <button class="btn" data-action="pomodoro" data-val="stop">Stop</button>
-        <button class="btn" data-action="pomodoro" data-val="reset">Reset</button>
-      </div>
-      <div class="small muted">Completing a cycle grants Focus XP (cosmetic).</div>
-      <div id="pom-time" class="h2">25:00</div>
-    </div>
-    <div class="panel">
-      <div class="h2">Momentum</div>
-      <canvas id="spark" width="320" height="60" style="width:100%;height:60px"></canvas>
-      <div class="small muted">Progress by day.</div>
-    </div>
-  </section>`;
-}
-
-function endgamePanel(){
-  const p = Math.round(overallPctRaw());
-  if(p<99 && !state.overlay.endgame.complete) return "";
-  const eg = state.overlay.endgame;
-  return `
-  <section class="panel">
-    <div class="h2">EXIT CODE</div>
-    <div class="small muted">At 99%, complete this ritual to flip to 100%: share links + export progress.</div>
-    <div class="grid cols-3">
-      <div class="panel">
-        <div class="h2">Repo URL</div>
-        <input class="input" id="eg-repo" value="${esc(eg.repoUrl)}" ${state.edit?"":"disabled"} />
-      </div>
-      <div class="panel">
-        <div class="h2">Live demo URL</div>
-        <input class="input" id="eg-demo" value="${esc(eg.demoUrl)}" ${state.edit?"":"disabled"} />
-      </div>
-      <div class="panel">
-        <div class="h2">Short retro</div>
-        <textarea class="textarea" id="eg-retro" ${state.edit?"":"disabled"}>${esc(eg.retro)}</textarea>
-      </div>
-    </div>
-    <div class="toolbar">
-      <label class="checkbox"><input type="checkbox" id="eg-sub" ${eg.submitted?'checked':''} ${state.edit?"":"disabled"} /> <div>I have exported my progress JSON and sent links.</div></label>
-      <button class="btn" data-action="eg-save" ${state.edit?"":"disabled"}>Save EXIT CODE</button>
-    </div>
-  </section>`;
-}
-
-// ---------- subviews ----------
+/* subviews */
 function renderPromptList(includeDays=false){
   const list = includeDays ? state.base.prompts : state.base.prompts.slice(0,3);
   return `
@@ -523,30 +542,6 @@ function renderPromptList(includeDays=false){
         </tr>`).join('')}
       </tbody>
     </table>`;
-}
-
-const EXTRA_PROMPTS = [
-  {title:"Sanity check — build runs clean", text:`Run: pnpm install && pnpm build
-Expected: no TypeScript errors; build completes without critical warnings.`},
-  {title:"Contrast & a11y quick pass", text:`Tab through links and buttons. Ensure visible focus and AA contrast (Lighthouse or axe).`},
-  {title:"Lighthouse baseline", text:`Chrome → Lighthouse → Performance/A11y/SEO. Target ≥ 90. Fix the top offenders.`},
-  {title:"Export ZIP integrity", text:`Unzip your export; run npm i && npm run build. Confirm it builds on a clean machine.`},
-  {title:"Tokens snapshot", text:`Switch presets across 4 themes; grab a screenshot grid. Headings/body stay legible; spacing/radius consistent.`},
-  {title:"Error safety", text:`Force an error in a section; verify ErrorBoundary renders with recovery.`},
-  {title:"Rule determinism", text:`Generate twice with the same brief; results should match.`},
-  {title:"Bundle size glance", text:`Inspect build output and lazy-load optional panels.`},
-  {title:"Smoke test (optional)", text:`Automate: open → generate → edit field → export → assert ZIP exists (≤ 60s).`}
-];
-function renderExtraPrompts(){
-  return `
-  <div class="grid cols-3">
-    ${EXTRA_PROMPTS.map(p=>`
-      <div class="card">
-        <h4>${esc(p.title)}</h4>
-        <div class="code">${esc(p.text)}</div>
-        <div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p.text)}">Copy</button></div>
-      </div>`).join('')}
-  </div>`;
 }
 
 function renderBugs(){
@@ -579,7 +574,6 @@ function renderBugs(){
     </table>
   </section>`;
 }
-
 function renderParking(){
   const base = state.base.parkingSeed;
   const local = state.overlay.parkingLocal;
@@ -601,7 +595,6 @@ function renderParking(){
     </table>
   </section>`;
 }
-
 function renderDecisions(){
   const base = state.base.decisionsSeed;
   const local = state.overlay.decisionsLocal;
@@ -626,195 +619,41 @@ function renderDecisions(){
   </section>`;
 }
 
-// ---------- Commands page (Windows/macOS/Linux + Git flow) ----------
-function renderCommands(){
-  return `
-  <section class="panel">
-    <div class="h2">Commands • Setup & daily use</div>
-    <div class="grid cols-3">
-      <div class="panel">
-        <div class="h2">Windows (PowerShell)</div>
-        <div class="code"># Install Node LTS
-winget install OpenJS.NodeJS.LTS
-# Enable pnpm
-npm -g i pnpm
-# Check versions
-node -v
-npm -v
-pnpm -v
-git --version
-
-# Create project
-pnpm dlx create-next-app@latest loompages --ts --eslint --tailwind --use-pnpm
-cd loompages
-pnpm i
-pnpm dev
-
-# Quality & build
-pnpm lint
-pnpm build
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="h2">macOS (Terminal)</div>
-        <div class="code"># Install Node LTS
-brew install node@lts
-# Enable pnpm (Corepack)
-corepack enable
-corepack prepare pnpm@latest --activate
-# Check
-node -v && pnpm -v && git --version
-
-# Create project
-pnpm dlx create-next-app@latest loompages --ts --eslint --tailwind --use-pnpm
-cd loompages
-pnpm dev
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="h2">Linux (Debian/Ubuntu)</div>
-        <div class="code">sudo apt update
-sudo apt install -y curl git build-essential
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt-get install -y nodejs
-corepack enable
-corepack prepare pnpm@latest --activate
-
-node -v && pnpm -v && git --version
-
-pnpm dlx create-next-app@latest loompages --ts --eslint --tailwind --use-pnpm
-cd loompages
-pnpm dev
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <div class="h2">Everyday Git / GitHub flow</div>
-    <div class="grid cols-3">
-      <div class="panel">
-        <div class="h2">Common commands</div>
-        <div class="code">git status
-git add -A
-git commit -m "feat: message"
-git push -u origin main
-
-# Branching
-git checkout -b feature/tokens
-git push -u origin feature/tokens
-# After PR merge
-git checkout main
-git pull
-        </div>
-      </div>
-      <div class="panel">
-        <div class="h2">Fixes & safety</div>
-        <div class="code"># Undo last commit but keep changes
-git reset --soft HEAD~1
-# Discard local changes to a file
-git restore path/to/file
-# Stash and come back
-git stash && git stash pop
-# Show recent history
-git log --oneline --graph --decorate -n 15
-        </div>
-      </div>
-      <div class="panel">
-        <div class="h2">Line endings (Windows)</div>
-        <div class="code"># Keep Windows CRLF locally, convert to LF on commit
-git config --global core.autocrlf true
-# Or keep LF everywhere
-git config --global core.autocrlf input
-        </div>
-        <div class="small muted">If you see “CRLF will be replaced by LF” warnings, this is normal.</div>
-      </div>
-    </div>
-  </section>
-  `;
-}
-
-// ---------- Cheat Sheet (replaces DEMOS view) ----------
-function renderCheatSheet(){
-  return `
-  <section class="panel">
-    <div class="h2">Cheat Sheet • Shortcuts & tips</div>
-    <div class="grid cols-3">
-      <div class="panel">
-        <div class="h2">VS Code — Windows/Linux</div>
-        <ul class="small">
-          <li>Ctrl + P — quick open</li>
-          <li>Ctrl + Shift + P — command palette</li>
-          <li>Ctrl + B — toggle sidebar</li>
-          <li>Ctrl + \` — terminal</li>
-          <li>Alt + ↑/↓ — move line</li>
-          <li>Ctrl + / — toggle comment</li>
-          <li>Ctrl + D — multi-select next</li>
-        </ul>
-      </div>
-      <div class="panel">
-        <div class="h2">VS Code — macOS</div>
-        <ul class="small">
-          <li>⌘ + P — quick open</li>
-          <li>⌘ + Shift + P — command palette</li>
-          <li>⌘ + B — toggle sidebar</li>
-          <li>⌃ + \` — terminal</li>
-          <li>⌥ + ↑/↓ — move line</li>
-          <li>⌘ + / — toggle comment</li>
-          <li>⌘ + D — multi-select next</li>
-        </ul>
-      </div>
-      <div class="panel">
-        <div class="h2">Terminal tips</div>
-        <ul class="small">
-          <li><code>cd</code> change folders; <code>..</code> goes up</li>
-          <li><code>ls</code>/<code>dir</code> list contents</li>
-          <li><code>mkdir</code> create folder</li>
-          <li><code>code .</code> open VS Code here</li>
-          <li>Ctrl + C stops a running process</li>
-        </ul>
-      </div>
-    </div>
-    <div class="panel">
-      <div class="h2">Commit message helper</div>
-      <div class="code">feat(tokens): preset mapping
-fix(editor): prevent crash when props missing
-chore(ci): add lint on push
-docs(readme): clarify export steps</div>
-      <div class="small muted">Stick to <em>feat/fix/chore/docs</em> prefixes for clarity.</div>
-    </div>
-  </section>`;
-}
-
-// ---------- wire header ----------
+/* header wiring */
 function wireHeader(){
-  el('#btn-edit')?.addEventListener('click', ()=>{ state.edit=!state.edit; toast(`Edit ${state.edit?'On':'Off'}`); render(); });
+  el('#btn-edit')?.addEventListener('click', ()=>{ state.edit=!state.edit; el('#btn-edit').textContent=`Edit: ${state.edit?'On':'Off'}`; toast(`Edit ${state.edit?'On':'Off'}`); render(); });
   el('#btn-export')?.addEventListener('click', exportOverlay);
   el('#btn-import')?.addEventListener('click', ()=>el('#file-import').click());
   el('#file-import')?.addEventListener('change', e=>{ const f=e.target.files?.[0]; if(f){ importOverlayFromFile(f); } e.target.value=""; });
   el('#btn-reset')?.addEventListener('click', resetOverlay);
 
-  el('#btn-settings')?.addEventListener('click', ()=>{
-    const m = el('.menu.settings'); m.classList.toggle('open');
-    const S=state.overlay.settings;
-    el('#set-motion').checked   = !S.motion;
-    el('#set-rain').checked     = !S.codeRain;   // label likely “Reduced code rain”
-    el('#set-contrast').checked = S.highContrast;
-    el('#set-sound').checked    = S.sound;
-  });
-  el('#set-motion')?.addEventListener('change', e=>{ state.overlay.settings.motion = !e.target.checked; saveOverlay(); });
-  el('#set-rain')?.addEventListener('change', e=>{ state.overlay.settings.codeRain = !e.target.checked; saveOverlay(); });
-  el('#set-contrast')?.addEventListener('change', e=>{ state.overlay.settings.highContrast = e.target.checked; saveOverlay(); render(); });
-  el('#set-sound')?.addEventListener('change', e=>{ state.overlay.settings.sound = e.target.checked; saveOverlay(); });
+  el('#btn-settings')?.addEventListener('click', ()=>{ el('.menu.settings').classList.toggle('open'); });
   document.addEventListener('click', e=>{ if(!e.target.closest('.menu')) el('.menu.settings')?.classList.remove('open'); });
 
-  el('#btn-jack')?.addEventListener('click', ()=>{ state.jack=!state.jack; document.body.classList.toggle('jackin', state.jack); render(); });
+  const S=state.overlay.settings;
+  el('#set-motion')?.addEventListener('change', e=>{ S.motion = !e.target.checked; saveOverlay(); });
+  el('#set-contrast')?.addEventListener('change', e=>{ S.highContrast = e.target.checked; saveOverlay(); render(); });
+  el('#set-sound')?.addEventListener('change', e=>{ S.sound = e.target.checked; saveOverlay(); });
+  el('#set-rain-mode')?.addEventListener('change', e=>{ S.rainMode = e.target.value; saveOverlay(); applyRainMode(); });
+  // initialize panel inputs
+  const init = ()=>{
+    const S=state.overlay.settings;
+    const rm = el('#set-rain-mode'); if(rm) rm.value = S.rainMode || "off";
+    const m  = el('#set-motion'); if(m) m.checked = !S.motion;
+    const c  = el('#set-contrast'); if(c) c.checked = !!S.highContrast;
+    const s  = el('#set-sound'); if(s) s.checked = !!S.sound;
+  };
+  setTimeout(init,0);
+
+  el('#btn-jack')?.addEventListener('click', ()=>{
+    state.jack=!state.jack;
+    document.body.classList.toggle('jackin', state.jack);
+    render(); // visual dim
+  });
 }
 
-// ---------- wire app ----------
-let pomInt=null, pomLeft=25*60; // 25 minutes
+/* app wiring */
+let pomInt=null, pomLeft=25*60;
 function wireApp(){
   document.addEventListener('click', e=>{
     const t=e.target;
@@ -826,7 +665,7 @@ function wireApp(){
     if(t.matches('[data-action="blue-pill"]')){ window.scrollTo({top:document.body.scrollHeight*0.35, behavior: state.overlay.settings.motion?'smooth':'instant'}); return; }
     if(t.matches('[data-action="goto-day"]')){ state.view="days"; state.day=t.dataset.day; render(); return; }
 
-    if(t.matches('[data-action="copy"]')){ navigator.clipboard.writeText(t.dataset.text||""); t.textContent="Copied"; setTimeout(()=>t.textContent="Copy",1200); return; }
+    if(t.matches('[data-action="copy"]')){ navigator.clipboard.writeText(t.dataset.text||""); t.textContent="Loaded"; setTimeout(()=>t.textContent="Load program",1200); return; }
 
     if(t.matches('[data-action="tick"]')){
       if(!state.edit) return;
@@ -843,19 +682,17 @@ function wireApp(){
       act('day-complete', `${day}=${v}`); render(); return;
     }
 
-    // End-of-day ritual
     if(t.matches('[data-action="eod"]')){
       if(!state.edit) return;
       const html = `
       <div class="h2" style="margin-bottom:8px">End-of-day ritual</div>
       <ol class="small">
-        <li>Commit & deploy</li><li>Write end notes</li><li>Export progress</li>
+        <li>Commit & push</li><li>Deploy</li><li>Write end notes</li><li>Export progress</li>
       </ol>
       <div class="toolbar"><button class="btn" data-close>Done</button></div>`;
       openModal(html); return;
     }
 
-    // EXIT CODE
     if(t.matches('[data-action="eg-save"]')){
       if(!state.edit) return;
       const eg=state.overlay.endgame;
@@ -937,32 +774,29 @@ function wireApp(){
     if(t.matches('[data-action="intent"]')){ if(!state.edit) return; const d=t.dataset.day; state.overlay.dayNotes[d].intention=t.value; saveOverlay(); }
   });
 }
-
 function updatePom(){
   const m = Math.floor(pomLeft/60), s=pomLeft%60;
   const elT=el('#pom-time'); if(elT) elT.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
-// ---------- export/import/reset ----------
+/* export/import/reset */
 function exportOverlay(){
   const blob=new Blob([JSON.stringify(state.overlay,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob); const a=document.createElement('a');
   a.href=url; a.download=`project-hq-progress-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
-
 function importOverlayFromFile(file){
   const rdr=new FileReader();
   rdr.onload=()=>{ try{ const obj=JSON.parse(String(rdr.result)); if(obj.version!==OVERLAY_VERSION) throw new Error("version mismatch"); state.overlay={...emptyOverlay(), ...obj}; saveOverlay(); render(); }catch(e){ alert("Import failed: "+e.message); } };
   rdr.readAsText(file);
 }
-
 function resetOverlay(){
   if(!confirm("This clears your local progress. Continue?")) return;
   state.overlay = emptyOverlay(); saveOverlay(); render();
 }
 
-// ---------- sparkline ----------
+/* sparkline */
 function drawSpark(){
   const c=el('#spark'); if(!c) return; const ctx=c.getContext('2d');
   const w=c.width, h=c.height; ctx.clearRect(0,0,w,h);
@@ -973,18 +807,71 @@ function drawSpark(){
   ctx.stroke();
 }
 
-// ---------- init ----------
+/* focus/pomodoro panels */
+function focusPomodoro(){
+  return `
+  <section class="grid cols-3">
+    <div class="panel">
+      <div class="h2">Jack In (Focus)</div>
+      <div class="small muted">Hide distractions. Work the plan.</div>
+      <div class="toolbar"><button class="btn" data-action="jack">${state.jack? "Exit Jack In" : "Enter Jack In"}</button></div>
+    </div>
+    <div class="panel">
+      <div class="h2">Focus Timer</div>
+      <div class="toolbar">
+        <button class="btn" data-action="pomodoro" data-val="start">Start</button>
+        <button class="btn" data-action="pomodoro" data-val="stop">Stop</button>
+        <button class="btn" data-action="pomodoro" data-val="reset">Reset</button>
+      </div>
+      <div class="small muted">Completing a cycle grants Focus XP (cosmetic).</div>
+      <div id="pom-time" class="h2">25:00</div>
+    </div>
+    <div class="panel">
+      <div class="h2">Momentum</div>
+      <canvas id="spark" width="320" height="60" style="width:100%;height:60px"></canvas>
+      <div class="small muted">Progress by day (tap the big ring for hints).</div>
+    </div>
+  </section>`;
+}
+function endgamePanel(){
+  const p = Math.round(overallPctRaw());
+  if(p<99 && !state.overlay.endgame.complete) return "";
+  const eg = state.overlay.endgame;
+  return `
+  <section class="panel">
+    <div class="h2">EXIT CODE</div>
+    <div class="small muted">At 99%, complete this ritual to flip to 100%: share links + export progress.</div>
+    <div class="grid cols-3">
+      <div class="panel">
+        <div class="h2">Repo URL</div>
+        <input class="input" id="eg-repo" value="${esc(eg.repoUrl)}" ${state.edit?"":"disabled"} />
+      </div>
+      <div class="panel">
+        <div class="h2">Live demo URL</div>
+        <input class="input" id="eg-demo" value="${esc(eg.demoUrl)}" ${state.edit?"":"disabled"} />
+      </div>
+      <div class="panel">
+        <div class="h2">Short retro</div>
+        <textarea class="textarea" id="eg-retro" ${state.edit?"":"disabled"}>${esc(eg.retro)}</textarea>
+      </div>
+    </div>
+    <div class="toolbar">
+      <label class="checkbox"><input type="checkbox" id="eg-sub" ${eg.submitted?'checked':''} ${state.edit?"":"disabled"} /> <div>I have exported my progress JSON and sent links.</div></label>
+      <button class="btn" data-action="eg-save" ${state.edit?"":"disabled"}>Save EXIT CODE</button>
+    </div>
+  </section>`;
+}
+
+/* init */
 (async function init(){
   state.overlay = loadOverlay();
   try{
     await loadBase();
-    // Theme toggles
     document.documentElement.dataset.theme="matrix";
     initRain();
     wireHeader(); wireApp();
     render(); drawSpark();
     if(state.overlay.lastSaved){ const lbl=el('#last-saved'); if(lbl) lbl.textContent=`Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}`; }
-    // ring pulse on check
     document.addEventListener('change', e=>{ if(e.target.matches('[data-action="tick"]')) beep(); maybeMilestones(); drawSpark(); });
   }catch(e){
     console.error(e);
