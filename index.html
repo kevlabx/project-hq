@@ -70,4 +70,83 @@
 
   <script src="app.js"></script>
 </body>
+</html><!doctype html>
+<html lang="en" data-theme="matrix">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LoomPages Project HQ — Matrix Assignment</title>
+  <meta name="description" content="Wake up, Builder. Ship LoomPages in 10 days. Local-only progress. No accounts.">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Matrix code rain canvas (edge/topbar/off via Settings; OFF by default) -->
+  <canvas id="code-rain" aria-hidden="true"></canvas>
+
+  <header class="site-header">
+    <div class="brand brand-center">
+      <div class="logo">LP</div>
+      <div>
+        <h1 class="hero-title">Wake up, Builder.</h1>
+        <p class="subtitle">Ship LoomPages in 10 days • Red pill to start • All progress stays on your device • <span class="small muted">Designed by Kevin</span></p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button data-view="dashboard" class="active">Mission</button>
+      <button data-view="days">Days</button>
+      <button data-view="tasks">Tasks</button>
+      <button data-view="bugs">Bugs</button>
+      <button data-view="docs">SSOT</button>
+      <button data-view="decisions">Decisions</button>
+      <button data-view="parking">Parking</button>
+      <button data-view="prompts">Prompts</button>
+      <button data-view="cheats">Cheat Sheet</button>
+      <button data-view="commands">Commands</button>
+
+      <span class="grow"></span>
+
+      <div class="controls">
+        <button id="btn-edit" class="btn" title="Toggle edit mode">Edit: Off</button>
+        <button id="btn-jack" class="btn" title="Focus mode (Jack In)">Jack In</button>
+        <button id="btn-export" class="btn" title="Download your local progress">Export</button>
+        <input id="file-import" type="file" accept="application/json" hidden />
+        <button id="btn-import" class="btn" title="Import a progress JSON">Import</button>
+        <button id="btn-reset" class="btn" title="Reset local progress">Reset</button>
+
+        <div class="menu settings">
+          <button id="btn-settings" class="btn">Settings</button>
+          <div class="menu-panel" id="settings-panel" role="dialog" aria-label="Settings">
+            <label class="checkbox"><input type="checkbox" id="set-motion" /> Reduced motion</label>
+            <label class="checkbox"><input type="checkbox" id="set-contrast" /> High contrast</label>
+            <label class="checkbox"><input type="checkbox" id="set-sound" /> UI sounds</label>
+            <div class="small" style="margin-top:8px">Code rain mode</div>
+            <select id="set-rain-mode" class="input">
+              <option value="off">Off (recommended)</option>
+              <option value="edge">Edge gutters</option>
+              <option value="nav">Top bar</option>
+            </select>
+            <div class="small muted" style="margin-top:8px">This assignment was curated by <strong>Kevin</strong>.</div>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main id="app" class="container"><!-- injected by app.js --></main>
+
+  <footer class="site-footer">
+    <div>
+      <strong>Exit code:</strong> Build in your own repo • Deploy a live demo • Export progress JSON • Short retro.
+      <div id="last-saved" class="footer-note">Crafted with intent — K.E.V.I.N.</div>
+    </div>
+  </footer>
+
+  <!-- Toasts & modal root -->
+  <div id="toasts" aria-live="polite" aria-atomic="true"></div>
+  <div id="modal-root"></div>
+
+  <script src="app.js"></script>
+</body>
 </html>
+

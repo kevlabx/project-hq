@@ -5,7 +5,7 @@ const els = (s, r=document)=>[...r.querySelectorAll(s)];
 const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
 const fmtPct = n => `${Math.round(n)}%`;
 
-const STORAGE_KEY="LP_HQ_STATE_V2"; // bump schema
+const STORAGE_KEY="LP_HQ_STATE_V2"; // keep V2 to preserve existing local data
 const OVERLAY_VERSION=2;
 
 const DAYS = ["D1","D2","D3","D4","D5","D6","D7","D8","D9","D10"];
@@ -30,7 +30,8 @@ function emptyOverlay(){
   return {
     version:OVERLAY_VERSION,
     codename:"",
-    settings:{ motion:true, codeRain:true, highContrast:false, sound:false },
+    // codeRain default OFF now; calmer UX
+    settings:{ motion:true, codeRain:false, highContrast:false, sound:false },
     dayTicks:{},               // { D1: { id:true } }
     dayNotes,                  // { Dn: { start,end,intention,complete } }
     bugs:[],                   // {title, severity, status}
@@ -52,7 +53,9 @@ function loadOverlay(){
     if(!raw) return emptyOverlay();
     const o = JSON.parse(raw);
     if(o.version!==OVERLAY_VERSION) return emptyOverlay();
-    return {...emptyOverlay(), ...o};
+    // tolerate older objects missing settings fields
+    const base = emptyOverlay();
+    return {...base, ...o, settings:{...base.settings, ...(o.settings||{})}};
   }catch{ return emptyOverlay(); }
 }
 
@@ -148,23 +151,29 @@ function maybeMilestones(){
   }
 }
 
-// ---------- code rain (toggleable) ----------
+// ---------- code rain (background, edge gutters, off by default) ----------
 let rainRAF=0, rainCtx=null, rainCols=[], rainFont=14;
 function initRain(){
   const cv = el('#code-rain'); if(!cv) return;
   const ctx = cv.getContext('2d'); rainCtx=ctx;
-  const resize=()=>{ cv.width=innerWidth; cv.height=innerHeight; rainFont = 16; const cols = Math.ceil(cv.width/rainFont); rainCols = Array(cols).fill(0); };
+  const resize=()=>{ cv.width=innerWidth; cv.height=innerHeight; rainFont = Math.max(14, Math.min(20, Math.floor(innerWidth/90))); const cols = Math.ceil(cv.width/rainFont); rainCols = Array(cols).fill(0); };
   addEventListener('resize', resize); resize();
 
   const glyphs = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const step=()=>{
     if(!state.overlay.settings.codeRain){ rainCtx && rainCtx.clearRect(0,0,cv.width,cv.height); rainRAF=requestAnimationFrame(step); return; }
-    rainCtx.fillStyle="rgba(0,0,0,0.05)"; rainCtx.fillRect(0,0,cv.width,cv.height);
+    // subtle trail
+    rainCtx.fillStyle="rgba(0,0,0,0.06)"; rainCtx.fillRect(0,0,cv.width,cv.height);
     rainCtx.fillStyle="#00ff85"; rainCtx.font = `${rainFont}px monospace`;
+
+    // draw only near edges to reduce distraction
+    const sideW = Math.max(72, Math.floor(cv.width*0.09)); // gutters ~9%
     for(let i=0;i<rainCols.length;i++){
-      const txt = glyphs[Math.floor(Math.random()*glyphs.length)];
       const x=i*rainFont; const y = rainCols[i]*rainFont;
-      rainCtx.fillText(txt,x,y);
+      if(x<sideW || x>cv.width-sideW){
+        const txt = glyphs[Math.floor(Math.random()*glyphs.length)];
+        rainCtx.fillText(txt,x,y);
+      }
       if(y>cv.height && Math.random()>0.975){ rainCols[i]=0; } else { rainCols[i]++; }
     }
     rainRAF=requestAnimationFrame(step);
@@ -242,6 +251,7 @@ function missionExplainer(){
     <div class="panel">
       <div class="h2">What you’ll build</div>
       <div class="small">Sections (Hero/Features/Pricing/FAQ/Testimonials/CTA) + variants, rule-based generator (8 industries), export to ZIP, optional AI polish, quality bars (A11y/SEO/Perf).</div>
+      <div class="small muted" style="margin-top:6px">Assignment curator: <strong>Kevin</strong></div>
     </div>
     <div class="panel">
       <div class="h2">How this works</div>
@@ -301,7 +311,7 @@ function render(){
 
   // set theme toggles
   document.documentElement.dataset.contrast = state.overlay.settings.highContrast ? "high" : "normal";
-  // landing
+
   if(state.view==="dashboard"){
     app.innerHTML = missionHero()+missionExplainer()+missionDaysRail()+focusPomodoro()+endgamePanel();
   }
@@ -339,8 +349,7 @@ function render(){
       <section class="panel focus-target">
         <div class="h2">Mission checklist ${ringHtml(pct)}</div>
         ${items.map((it,idx)=>{
-          // First 3 = main path, rest = side quests
-          const group = idx<3 ? "Equip/Engage/Extract" : "Side Quest";
+          const group = idx<3 ? "Main path" : "Side quest";
           return `
             <label class="checkbox">
               <input type="checkbox" data-action="tick" data-day="${day}" data-id="${esc(it.id)}" ${ticks[it.id]?'checked':''} ${disabled} />
@@ -387,7 +396,7 @@ function render(){
           <div class="card">
             <h4>${esc(t.id)} · ${esc(t.title)}</h4>
             <div class="small muted">${esc(t.day)} · ${esc(t.priority)} · ${esc(String(t.percent||0))}%</div>
-            <div class="note small">Guidance only. Track real progress in Days.</div>
+            <div class="small muted">Guidance only. Track real progress in Days.</div>
           </div>`).join('')}
       </div>`).join('');
     el('#app').innerHTML = `<section class="panel"><div class="h2">Kanban (reference)</div><div class="board">${cols}</div></section>`;
@@ -422,28 +431,20 @@ function render(){
       <section class="panel">
         <div class="h2">All prompts (copy to load programs)</div>
         ${renderPromptList(true)}
+      </section>
+      <section class="panel">
+        <div class="h2">Extra prompts — speed up, validate, and test</div>
+        ${renderExtraPrompts()}
       </section>`;
   }
 
-  if(state.view==="demos"){
-    el('#app').innerHTML = `
-      <section class="panel">
-        <div class="h2">Demo gallery</div>
-        <div class="grid cols-3">
-          <div class="card"><h4>Café demo</h4><div class="small muted">link later</div></div>
-          <div class="card"><h4>Barber demo</h4><div class="small muted">link later</div></div>
-          <div class="card"><h4>Interior demo</h4><div class="small muted">link later</div></div>
-        </div>
-      </section>`;
+  // Replace DEMOS with CHEAT SHEET without changing HTML: support both routes
+  if(state.view==="cheats" || state.view==="demos"){
+    el('#app').innerHTML = renderCheatSheet();
   }
 
   if(state.view==="commands"){
-    el('#app').innerHTML = `
-      <section class="panel">
-        <div class="h2">Windows commands</div>
-        <div class="code">node -v\nnpm -v\npnpm -v\ngit --version\npnpm i\npnpm dev</div>
-        <div class="footer-note">Use VS Code Live Server or “npx serve” to test locally.</div>
-      </section>`;
+    el('#app').innerHTML = renderCommands();
   }
 
   // nav state & ring live update
@@ -473,7 +474,7 @@ function focusPomodoro(){
     <div class="panel">
       <div class="h2">Momentum</div>
       <canvas id="spark" width="320" height="60" style="width:100%;height:60px"></canvas>
-      <div class="small muted">Progress by day (tap the big ring for hints).</div>
+      <div class="small muted">Progress by day.</div>
     </div>
   </section>`;
 }
@@ -522,6 +523,30 @@ function renderPromptList(includeDays=false){
         </tr>`).join('')}
       </tbody>
     </table>`;
+}
+
+const EXTRA_PROMPTS = [
+  {title:"Sanity check — build runs clean", text:`Run: pnpm install && pnpm build
+Expected: no TypeScript errors; build completes without critical warnings.`},
+  {title:"Contrast & a11y quick pass", text:`Tab through links and buttons. Ensure visible focus and AA contrast (Lighthouse or axe).`},
+  {title:"Lighthouse baseline", text:`Chrome → Lighthouse → Performance/A11y/SEO. Target ≥ 90. Fix the top offenders.`},
+  {title:"Export ZIP integrity", text:`Unzip your export; run npm i && npm run build. Confirm it builds on a clean machine.`},
+  {title:"Tokens snapshot", text:`Switch presets across 4 themes; grab a screenshot grid. Headings/body stay legible; spacing/radius consistent.`},
+  {title:"Error safety", text:`Force an error in a section; verify ErrorBoundary renders with recovery.`},
+  {title:"Rule determinism", text:`Generate twice with the same brief; results should match.`},
+  {title:"Bundle size glance", text:`Inspect build output and lazy-load optional panels.`},
+  {title:"Smoke test (optional)", text:`Automate: open → generate → edit field → export → assert ZIP exists (≤ 60s).`}
+];
+function renderExtraPrompts(){
+  return `
+  <div class="grid cols-3">
+    ${EXTRA_PROMPTS.map(p=>`
+      <div class="card">
+        <h4>${esc(p.title)}</h4>
+        <div class="code">${esc(p.text)}</div>
+        <div class="toolbar"><button class="btn" data-action="copy" data-text="${esc(p.text)}">Copy</button></div>
+      </div>`).join('')}
+  </div>`;
 }
 
 function renderBugs(){
@@ -601,6 +626,168 @@ function renderDecisions(){
   </section>`;
 }
 
+// ---------- Commands page (Windows/macOS/Linux + Git flow) ----------
+function renderCommands(){
+  return `
+  <section class="panel">
+    <div class="h2">Commands • Setup & daily use</div>
+    <div class="grid cols-3">
+      <div class="panel">
+        <div class="h2">Windows (PowerShell)</div>
+        <div class="code"># Install Node LTS
+winget install OpenJS.NodeJS.LTS
+# Enable pnpm
+npm -g i pnpm
+# Check versions
+node -v
+npm -v
+pnpm -v
+git --version
+
+# Create project
+pnpm dlx create-next-app@latest loompages --ts --eslint --tailwind --use-pnpm
+cd loompages
+pnpm i
+pnpm dev
+
+# Quality & build
+pnpm lint
+pnpm build
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="h2">macOS (Terminal)</div>
+        <div class="code"># Install Node LTS
+brew install node@lts
+# Enable pnpm (Corepack)
+corepack enable
+corepack prepare pnpm@latest --activate
+# Check
+node -v && pnpm -v && git --version
+
+# Create project
+pnpm dlx create-next-app@latest loompages --ts --eslint --tailwind --use-pnpm
+cd loompages
+pnpm dev
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="h2">Linux (Debian/Ubuntu)</div>
+        <div class="code">sudo apt update
+sudo apt install -y curl git build-essential
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+corepack enable
+corepack prepare pnpm@latest --activate
+
+node -v && pnpm -v && git --version
+
+pnpm dlx create-next-app@latest loompages --ts --eslint --tailwind --use-pnpm
+cd loompages
+pnpm dev
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="h2">Everyday Git / GitHub flow</div>
+    <div class="grid cols-3">
+      <div class="panel">
+        <div class="h2">Common commands</div>
+        <div class="code">git status
+git add -A
+git commit -m "feat: message"
+git push -u origin main
+
+# Branching
+git checkout -b feature/tokens
+git push -u origin feature/tokens
+# After PR merge
+git checkout main
+git pull
+        </div>
+      </div>
+      <div class="panel">
+        <div class="h2">Fixes & safety</div>
+        <div class="code"># Undo last commit but keep changes
+git reset --soft HEAD~1
+# Discard local changes to a file
+git restore path/to/file
+# Stash and come back
+git stash && git stash pop
+# Show recent history
+git log --oneline --graph --decorate -n 15
+        </div>
+      </div>
+      <div class="panel">
+        <div class="h2">Line endings (Windows)</div>
+        <div class="code"># Keep Windows CRLF locally, convert to LF on commit
+git config --global core.autocrlf true
+# Or keep LF everywhere
+git config --global core.autocrlf input
+        </div>
+        <div class="small muted">If you see “CRLF will be replaced by LF” warnings, this is normal.</div>
+      </div>
+    </div>
+  </section>
+  `;
+}
+
+// ---------- Cheat Sheet (replaces DEMOS view) ----------
+function renderCheatSheet(){
+  return `
+  <section class="panel">
+    <div class="h2">Cheat Sheet • Shortcuts & tips</div>
+    <div class="grid cols-3">
+      <div class="panel">
+        <div class="h2">VS Code — Windows/Linux</div>
+        <ul class="small">
+          <li>Ctrl + P — quick open</li>
+          <li>Ctrl + Shift + P — command palette</li>
+          <li>Ctrl + B — toggle sidebar</li>
+          <li>Ctrl + \` — terminal</li>
+          <li>Alt + ↑/↓ — move line</li>
+          <li>Ctrl + / — toggle comment</li>
+          <li>Ctrl + D — multi-select next</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="h2">VS Code — macOS</div>
+        <ul class="small">
+          <li>⌘ + P — quick open</li>
+          <li>⌘ + Shift + P — command palette</li>
+          <li>⌘ + B — toggle sidebar</li>
+          <li>⌃ + \` — terminal</li>
+          <li>⌥ + ↑/↓ — move line</li>
+          <li>⌘ + / — toggle comment</li>
+          <li>⌘ + D — multi-select next</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="h2">Terminal tips</div>
+        <ul class="small">
+          <li><code>cd</code> change folders; <code>..</code> goes up</li>
+          <li><code>ls</code>/<code>dir</code> list contents</li>
+          <li><code>mkdir</code> create folder</li>
+          <li><code>code .</code> open VS Code here</li>
+          <li>Ctrl + C stops a running process</li>
+        </ul>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="h2">Commit message helper</div>
+      <div class="code">feat(tokens): preset mapping
+fix(editor): prevent crash when props missing
+chore(ci): add lint on push
+docs(readme): clarify export steps</div>
+      <div class="small muted">Stick to <em>feat/fix/chore/docs</em> prefixes for clarity.</div>
+    </div>
+  </section>`;
+}
+
 // ---------- wire header ----------
 function wireHeader(){
   el('#btn-edit')?.addEventListener('click', ()=>{ state.edit=!state.edit; toast(`Edit ${state.edit?'On':'Off'}`); render(); });
@@ -612,10 +799,10 @@ function wireHeader(){
   el('#btn-settings')?.addEventListener('click', ()=>{
     const m = el('.menu.settings'); m.classList.toggle('open');
     const S=state.overlay.settings;
-    el('#set-motion').checked = !S.motion;
-    el('#set-rain').checked   = !S.codeRain;
+    el('#set-motion').checked   = !S.motion;
+    el('#set-rain').checked     = !S.codeRain;   // label likely “Reduced code rain”
     el('#set-contrast').checked = S.highContrast;
-    el('#set-sound').checked  = S.sound;
+    el('#set-sound').checked    = S.sound;
   });
   el('#set-motion')?.addEventListener('change', e=>{ state.overlay.settings.motion = !e.target.checked; saveOverlay(); });
   el('#set-rain')?.addEventListener('change', e=>{ state.overlay.settings.codeRain = !e.target.checked; saveOverlay(); });
@@ -639,7 +826,7 @@ function wireApp(){
     if(t.matches('[data-action="blue-pill"]')){ window.scrollTo({top:document.body.scrollHeight*0.35, behavior: state.overlay.settings.motion?'smooth':'instant'}); return; }
     if(t.matches('[data-action="goto-day"]')){ state.view="days"; state.day=t.dataset.day; render(); return; }
 
-    if(t.matches('[data-action="copy"]')){ navigator.clipboard.writeText(t.dataset.text||""); t.textContent="Loaded"; setTimeout(()=>t.textContent="Load program",1200); return; }
+    if(t.matches('[data-action="copy"]')){ navigator.clipboard.writeText(t.dataset.text||""); t.textContent="Copied"; setTimeout(()=>t.textContent="Copy",1200); return; }
 
     if(t.matches('[data-action="tick"]')){
       if(!state.edit) return;
@@ -662,7 +849,7 @@ function wireApp(){
       const html = `
       <div class="h2" style="margin-bottom:8px">End-of-day ritual</div>
       <ol class="small">
-        <li>Commit & push</li><li>Deploy</li><li>Write end notes</li><li>Export progress</li>
+        <li>Commit & deploy</li><li>Write end notes</li><li>Export progress</li>
       </ol>
       <div class="toolbar"><button class="btn" data-close>Done</button></div>`;
       openModal(html); return;
@@ -795,8 +982,6 @@ function drawSpark(){
     document.documentElement.dataset.theme="matrix";
     initRain();
     wireHeader(); wireApp();
-    // Resume last day if user left in Days
-    if(state.overlay.lastActiveDay && state.view==="dashboard"){ /* keep landing first */ }
     render(); drawSpark();
     if(state.overlay.lastSaved){ const lbl=el('#last-saved'); if(lbl) lbl.textContent=`Last saved locally: ${new Date(state.overlay.lastSaved).toLocaleString()}`; }
     // ring pulse on check
