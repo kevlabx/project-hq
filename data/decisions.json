@@ -1,0 +1,4 @@
+[
+  {"id":"D-001","date":"2025-09-17","decision":"Tokens via CSS variables","impact":"Consistent theming, easier variants"},
+  {"id":"D-002","date":"2025-09-17","decision":"No backend for MVP","impact":"Lower risk, zero cost deploy"}
+]

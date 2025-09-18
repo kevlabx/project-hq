@@ -1,0 +1,12 @@
+[
+  {"name":"Foundations","day":"D1"},
+  {"name":"Style Tokens","day":"D2"},
+  {"name":"Section Library v1","day":"D3"},
+  {"name":"Editor UX","day":"D4"},
+  {"name":"Rule Generator","day":"D5"},
+  {"name":"Export","day":"D6"},
+  {"name":"Optional AI Copy","day":"D7"},
+  {"name":"Quality & Stability","day":"D8"},
+  {"name":"Landing & Legal","day":"D9"},
+  {"name":"Hardening & Launch","day":"D10"}
+]

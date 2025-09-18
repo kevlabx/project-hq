@@ -1,0 +1,12 @@
+[
+  {"name":"Foundations","type":"Epic","day":"D1","status":"Not started","priority":"P2"},
+  {"name":"Style Tokens","type":"Epic","day":"D2","status":"Not started","priority":"P2"},
+  {"name":"Section Library v1","type":"Epic","day":"D3","status":"Not started","priority":"P2"},
+  {"name":"Editor UX","type":"Epic","day":"D4","status":"Not started","priority":"P2"},
+  {"name":"Rule-based Generator","type":"Epic","day":"D5","status":"Not started","priority":"P2"},
+  {"name":"Export to ZIP and GitHub","type":"Epic","day":"D6","status":"Not started","priority":"P2"},
+  {"name":"Optional AI Copy","type":"Epic","day":"D7","status":"Not started","priority":"P2"},
+  {"name":"Quality and Stability","type":"Epic","day":"D8","status":"Not started","priority":"P2"},
+  {"name":"Landing, Demos, Docs, Legal","type":"Epic","day":"D9","status":"Not started","priority":"P2"},
+  {"name":"Hardening and Launch","type":"Epic","day":"D10","status":"Not started","priority":"P2"}
+]

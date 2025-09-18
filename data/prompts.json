@@ -1,0 +1,52 @@
+[
+  {
+    "day": "D1",
+    "start": "Context: Build a minimal Next.js App Router app with TypeScript, Tailwind, shadcn ui, Zustand, Zod, dnd kit. Strict TS. Folders app, components, lib, public. Add TokensProvider and Preview. Push to GitHub and deploy to Vercel. Windows with Node LTS, pnpm, Git.\nTask: Give exact Windows PowerShell commands, installs, minimal files with code, and a short test plan.",
+    "end": "List what we finished today. Top three risks for tomorrow. Short next steps. Under 200 words."
+  },
+  {
+    "day": "D2",
+    "start": "Context: TokensProvider and Preview exist. Goal: Create a TokensPanel to edit brandColor, accentColor, fontPair, fontScale, spacingScale, radius. Map to CSS variables and Tailwind. Make four presets: Clean, Friendly, Bold, Minimal. Show code for mapping and live preview.",
+    "end": "Summarize token work, note styling bugs, propose two refactors for tomorrow."
+  },
+  {
+    "day": "D3",
+    "start": "Context: Tokens and live preview work. Goal: Build six section types Hero, Features, Pricing, FAQ, Testimonials, CTA with three or four variants each. Accessible, responsive. Provide SectionRegistry and typed props.",
+    "end": "List sections and variants shipped. Note missing alt text or tab traps. Action list for Day 4."
+  },
+  {
+    "day": "D4",
+    "start": "Context: Sections and registry ready. Goal: Build Editor panel with Zod validation, inline text edit, drag-and-drop reorder with dnd kit, duplicate, delete, undo/redo if simple. Autosave to IndexedDB every 10 seconds.",
+    "end": "Describe UX rough spots, one sub-hour improvement, confirm autosave and recovery with a test script."
+  },
+  {
+    "day": "D5",
+    "start": "Context: Editor ready. Goal: Brief form industry, audience, tone, goal. Implement generateFromBrief returning PageSchema with section order, variants, and draft copy (no AI). Seed 8 industries: Cafe, Barber, Interior Design, Fitness, Tutor, Photographer, Bakery, Agency.",
+    "end": "Summarize rules in a small table, note weak layouts, suggest tweaks."
+  },
+  {
+    "day": "D6",
+    "start": "Context: We can generate and edit a page. Goal: exportProject builds a Next.js static site in memory and downloads a zip. Include package.json, app, components/sections, tailwind config, README. Optional GitHub export via fine-grained PAT.",
+    "end": "Confirm exported project builds on Windows. Troubleshoot list. Suggest one way to reduce export size."
+  },
+  {
+    "day": "D7",
+    "start": "Context: Export works. Goal: Settings modal stores OpenAI key in localStorage. Stateless edge function improves text. Rate limit, no logs, global off switch.",
+    "end": "One paragraph security note about keys. Tests that confirm no key leaves the browser except on request."
+  },
+  {
+    "day": "D8",
+    "start": "Context: Optional AI ready. Goal: A11y and SEO fixes. Meta and sitemap. Reduce layout shift, optimize preview images. ErrorBoundary + Recover last draft. 20 snapshots and Playwright smoke.",
+    "end": "Post Lighthouse scores and top 3 fixes. Paste Playwright run summary."
+  },
+  {
+    "day": "D9",
+    "start": "Context: Quality passes. Goal: Public landing explaining brief→build→edit→export→deploy. Six demo sites deployed. Docs: Quick Start, Export, Tokens, FAQ. Legal: ToS, Privacy, AUP, non-affiliation.",
+    "end": "Review landing and docs for clarity. Two tiny copy edits for small business owners."
+  },
+  {
+    "day": "D10",
+    "start": "Context: Site and docs live. Goal: Sanitize inputs, restrict image types, CSP headers. Load run with 100 sections. Empty states and tooltips. 2-minute demo video embedded. Support email tested. Domain points to Vercel. Announce.",
+    "end": "Final summary of the build, what shipped, known limits, short plan for week two."
+  }
+]
